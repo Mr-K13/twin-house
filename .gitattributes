@@ -1,0 +1,6 @@
+# Use LF everywhere (this prevents the CRLF warning on each git add on Windows; editors follow .editorconfig / their defaults)
+* text=auto eol=lf
+*.png binary
+*.gif binary
+*.jpg binary
+*.ico binary

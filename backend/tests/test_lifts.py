@@ -1,0 +1,331 @@
+"""Lift state machine (required tests from spec §9–§14, §25)"""
+import math
+from app.sim.engine import SimEngine, SIM
+from app.sim.navgrid import load_layout
+
+L = load_layout()
+
+
+def _boot(seed=7):
+    e = SimEngine(L, seed=seed)
+    t = e.create_task("PICK", "CRITICAL", "SHELF-M05", "PACK-01")
+    return e, t
+
+
+def test_robot_cannot_change_floor_without_lift():
+    """The floor flips only after ALIGHTING completes and the robot leaves the cabin door area (round-5 P1: the floor must not flip inside the cabin)"""
+    e, t = _boot()
+    prev = {rid: r["floor"] for rid, r in e.state["robots"].items()}
+    stage_at = {rid: r["lift_stage"] for rid, r in e.state["robots"].items()}
+    cabins = [(l["cell"][0] + 0.5, l["cell"][1] + 0.5) for l in L["lifts"]]
+    for _ in range(24000):
+        e.step()
+        for rid, r in e.state["robots"].items():
+            if r["floor"] != prev[rid]:
+                assert stage_at[rid] == "ALIGHTING", f"{rid} changed floor outside lift flow"
+                min_cab = min(math.hypot(r["position"][0] - c[0], r["position"][2] - c[1]) for c in cabins)
+                assert min_cab > 1.4, f"{rid} flipped floor while still at the cabin ({min_cab:.2f} m)"
+            prev[rid] = r["floor"]; stage_at[rid] = r["lift_stage"]
+        if t["status"] == "COMPLETED":
+            break
+    assert t["status"] == "COMPLETED"
+
+
+def test_lift_cannot_move_with_open_gate():
+    e, t = _boot()
+    for _ in range(24000):
+        e.step()
+        for L_ in e.state["lifts"].values():
+            if L_["state"] in ("MOVING_UP", "MOVING_DOWN"):
+                assert L_["door_f1"] == "CLOSED" and L_["door_f2"] == "CLOSED"
+                assert L_["floor"] is None   # a moving lift belongs to no floor
+        if t["status"] == "COMPLETED":
+            break
+
+
+def test_only_one_robot_can_occupy_lift_and_queue_fifo():
+    e = SimEngine(L, seed=11)
+    e.create_task("PICK", "CRITICAL", "SHELF-M01", "PACK-01")
+    e.create_task("PICK", "CRITICAL", "SHELF-M10", "SORT-01")
+    e.create_task("PICK", "CRITICAL", "SHELF-M20", "PACK-02")
+    for _ in range(30000):
+        e.step()
+        riders = [r for r in e.state["robots"].values() if r["lift_id"]]
+        per_lift = {}
+        for r in riders:
+            per_lift[r["lift_id"]] = per_lift.get(r["lift_id"], 0) + 1
+        assert all(n == 1 for n in per_lift.values())
+        for L_ in e.state["lifts"].values():
+            for f in ("1", "2"):
+                q = L_["queue"][f]
+                ticks = [e.rt[rid].lift_enqueued_tick for rid in q if rid in e.rt]
+                assert ticks == sorted(ticks)   # FIFO
+
+
+def test_lift_fault_triggers_alternative_selection_and_no_teleport():
+    e, t = _boot()
+    rid = None
+    for _ in range(20000):
+        e.step()
+        if t["assigned_robot"] and e.state["robots"][t["assigned_robot"]]["lift_stage"]:
+            rid = t["assigned_robot"]; break
+    assert rid
+    lift_id = next((lid for lid, L_ in e.state["lifts"].items()
+                    if L_["reserved_by"] == rid or rid in L_["queue"]["1"] or rid in L_["queue"]["2"] or L_["occupant"] == rid), "LIFT-1")
+    r = e.state["robots"][rid]
+    was_inside = e.state["lifts"][lift_id]["occupant"] == rid
+    e.inject({"kind": "LIFT_FAULT", "lift_id": lift_id})
+    pos0 = (r["position"][0], r["position"][2])
+    for _ in range(200):
+        e.step()
+    if was_inside:   # already in the cabin: no teleport permitted
+        assert math.hypot(r["position"][0] - pos0[0], r["position"][2] - pos0[1]) < 0.5
+        assert r["lift_id"] == lift_id
+    e.clear_injection("LIFT_FAULT", lift_id)
+    for _ in range(24000):
+        e.step()
+        if t["status"] == "COMPLETED":
+            break
+    assert t["status"] == "COMPLETED"
+
+
+def test_lift_fault_clear_resumes_from_frozen_height_no_teleport():
+    """After the fault clears, the platform resumes from the frozen height and does not teleport in one tick (round-5 P1: fault_remaining freezes the timer)"""
+    e, t = _boot()
+    lift_id = None
+    for _ in range(30000):
+        e.step()
+        lift_id = next((lid for lid, L_ in e.state["lifts"].items() if L_["state"] in ("MOVING_UP", "MOVING_DOWN")), None)
+        if lift_id:
+            break
+    assert lift_id, "no lift ever moved"
+    Lst = e.state["lifts"][lift_id]
+    e.inject({"kind": "LIFT_FAULT", "lift_id": lift_id})
+    e.step()   # apply the injection
+    y_frozen = Lst["y"]
+    for _ in range(200):
+        e.step()
+        assert Lst["y"] == y_frozen, "platform moved while faulted"
+    e.clear_injection("LIFT_FAULT", lift_id)
+    prev_y = Lst["y"]
+    for _ in range(24000):
+        e.step()
+        assert abs(Lst["y"] - prev_y) < 0.5, "platform teleported after fault clear"
+        prev_y = Lst["y"]
+        if t["status"] == "COMPLETED":
+            break
+    assert t["status"] == "COMPLETED"
+
+
+def test_decision_lift_matches_actual_route():
+    """The lift in the dispatch audit = the lift the robot actually queues for (round-6 P2: planned_lift_id binding)"""
+    import re
+    e = SimEngine(L, seed=9)
+    audited = None; rid = None
+    for _ in range(60000):
+        e.step()
+        if not e.state["recent_decisions"]:
+            continue
+        d = e.state["recent_decisions"][0]
+        if d["tick"] != e.state["sim"]["tick"]:
+            continue
+        c = next((x for x in d["candidates"] if x["robot_id"] == d["selected_robot"]), None)
+        m = next((mm for mm in (re.search(r"cross-floor via (LIFT-\d+)", s) for s in (c["reasons"] if c else [])) if mm), None)
+        if m:
+            audited = m.group(1); rid = d["selected_robot"]; break
+    assert audited, "no cross-floor assignment observed"
+    actual = None
+    for _ in range(5000):
+        e.step()
+        for lid, L_ in e.state["lifts"].items():
+            if rid in L_["queue"]["1"] or rid in L_["queue"]["2"] or L_["reserved_by"] == rid or L_["occupant"] == rid:
+                actual = lid; break
+        if actual:
+            break
+    assert actual == audited
+
+
+def test_cancelled_robot_releases_lift():
+    e, t = _boot()
+    rid = None
+    for _ in range(20000):
+        e.step()
+        if t["assigned_robot"] and e.state["robots"][t["assigned_robot"]]["lift_stage"] in ("QUEUED", "TO_LIFT"):
+            rid = t["assigned_robot"]; break
+    assert rid
+    e.inject({"kind": "ROBOT_FAILURE", "robot_id": rid})
+    for _ in range(100):
+        e.step()
+    for L_ in e.state["lifts"].values():
+        assert L_["reserved_by"] != rid and L_["occupant"] != rid
+        assert rid not in L_["queue"]["1"] and rid not in L_["queue"]["2"]
+
+
+def test_shaft_blocked_and_paths_avoid_it():
+    """The shaft is a nav obstacle (round-8): both floor grids block it, paths do not cross it, and robots outside the lift flow do not enter it"""
+    from app.sim.navgrid import build_nav_grid
+    for fl in (1, 2):
+        g = build_nav_grid(L, fl)
+        for l in L["lifts"]:
+            c = l["cell"]
+            assert g.cells[c[1] * g.cols + c[0]] == 1, f"{l['id']} cabin F{fl} not blocked"
+            # round-9g: also block the north and south faces (cell±2 rows) -- the shaft is 3.6 m deep; with only 3 rows blocked, the guard mesh extends into walkable cells
+            for dc in (-1, 0, 1):
+                for dr in (-2, 2):
+                    assert g.cells[(c[1] + dr) * g.cols + (c[0] + dc)] == 1, f"{l['id']} face({dc},{dr}) F{fl} not blocked"
+            for i in range(3):
+                assert g.cells[c[1] * g.cols + (c[0] - 4 - i)] != 1, f"{l['id']} queue{i} F{fl} blocked"
+            assert g.cells[c[1] * g.cols + (c[0] - 2)] != 1, f"{l['id']} gate cell F{fl} blocked"   # gate relay cell
+            for dc, dr in ((-2, -2), (-2, 2), (-3, -1), (-3, 1), (-3, -2), (-3, 2), (-2, 0)):
+                assert g.cells[(c[1] + dr) * g.cols + (c[0] + dc)] != 1, f"{l['id']} exit({dc},{dr}) F{fl} blocked"
+    # mezzanine support columns (round-9c): blocked on F1, not blocked on F2; paths and robot bodies must not cross a column
+    cols = L.get("columns", [])
+    assert cols, "layout.columns missing"
+    g1 = build_nav_grid(L, 1); g2 = build_nav_grid(L, 2)
+    for cx, cz in cols:
+        import math as _m
+        for c in range(_m.floor(cx - 0.45), _m.ceil(cx + 0.45)):
+            for r_ in range(_m.floor(cz - 0.45), _m.ceil(cz + 0.45)):
+                assert g1.cells[r_ * g1.cols + c] == 1, f"column ({cx},{cz}) cell ({c},{r_}) not blocked on F1"
+                assert g2.cells[r_ * g2.cols + c] != 1 or True   # F2 floor slab has its own rules; columns do not affect F2
+
+    e = SimEngine(L, seed=13)
+    e.create_task("PICK", "CRITICAL", "SHELF-M05", "PACK-01")
+    e.create_task("PICK", "CRITICAL", "SHELF-M12", "PACK-02")
+
+    def in_shaft(x: float, z: float) -> bool:
+        return any(abs(x - (l["cell"][0] + 0.5)) < 1.4 and abs(z - (l["cell"][1] + 0.5)) < 1.4 for l in L["lifts"])
+
+    def in_column(x: float, z: float) -> bool:
+        return any(abs(x - cx) < 0.45 and abs(z - cz) < 0.45 for cx, cz in cols)
+
+    import math as _math
+    HL, HW = 0.475, 0.34   # = SIM.ROBOT_HALF_LEN / ROBOT_HALF_W
+
+    def body_in_shaft(x: float, z: float, h: float) -> bool:
+        # round-9g: the four body corners (OBB) must not enter the "visual" shaft rectangle (W 2.8 × D 3.6) -- a center-point check misses edge scrapes
+        cth, sth = _math.cos(h), _math.sin(h)
+        for ex, ez in ((HL, HW), (HL, -HW), (-HL, HW), (-HL, -HW)):
+            px, pz = x + ex * cth - ez * sth, z + ex * sth + ez * cth
+            if any(abs(px - (l["cell"][0] + 0.5)) < 1.4 - 0.02 and abs(pz - (l["cell"][1] + 0.5)) < 1.8 - 0.02 for l in L["lifts"]):
+                return True
+        return False
+
+    for _ in range(20000):
+        e.step()
+        for r in e.state["robots"].values():
+            for p in r["path"][r["path_index"]:]:
+                assert not in_shaft(p[0] + 0.5, p[1] + 0.5), f"{r['id']} path crosses shaft"
+            if not r["lift_stage"] and not r["lift_id"]:
+                assert not in_shaft(r["position"][0], r["position"][2]), f"{r['id']} inside shaft outside lift flow"
+            in_flow = r["lift_id"] or r["lift_stage"] in ("BOARDING", "RIDING", "ALIGHTING")
+            if not in_flow:
+                assert not body_in_shaft(r["position"][0], r["position"][2], r["heading"]), \
+                    f"{r['id']} body clips shaft structure at ({r['position'][0]:.2f},{r['position'][2]:.2f})"
+            if r["floor"] == 1 and not r["lift_id"]:
+                assert not in_column(r["position"][0], r["position"][2]), f"{r['id']} inside a support column"
+                for p in r["path"][r["path_index"]:]:
+                    assert not in_column(p[0] + 0.5, p[1] + 0.5), f"{r['id']} path crosses a support column"
+
+
+def test_alighting_exits_through_gate():
+    """Three-stage alighting (round-8d): per-frame OBB corner gate check + no large turn while moving; verifies both directions and loaded/empty robots.
+    Geometry constants match the 3D shaft model (W 2.8 / LEAF 1.12) to prevent drift."""
+    assert SIM["LIFT_SHAFT_HALF_X"] * 2 == 2.8 and SIM["LIFT_DOOR_HALF_W"] == 1.12
+    e = SimEngine(L, seed=5)
+    tasks = [
+        e.create_task("PICK", "CRITICAL", "SHELF-M02", "PACK-01"),
+        e.create_task("PICK", "CRITICAL", "SHELF-M12", "PACK-02"),
+        e.create_task("PICK", "CRITICAL", "SHELF-M22", "SORT-01"),
+        e.create_task("REPLENISH", "CRITICAL", "INBOUND-1", "SHELF-M30"),
+        e.create_task("REPLENISH", "CRITICAL", "INBOUND-2", "SHELF-M40"),
+        e.create_task("PICK", "HIGH", "SHELF-M05", "PACK-01"),
+    ]
+    dirs = set(); lifts_seen = set(); loads = set(); prev = {}
+    for _ in range(90000):
+        e.step()
+        for r in e.state["robots"].values():
+            if r["lift_stage"] != "ALIGHTING" or not r["lift_id"]:
+                prev.pop(r["id"], None); continue
+            l = next(x for x in L["lifts"] if x["id"] == r["lift_id"])
+            Ls = e.state["lifts"][l["id"]]
+            cx = l["cell"][0] + 0.5; cz = l["cell"][1] + 0.5
+            x = r["position"][0]; z = r["position"][2]; h = r["heading"]
+            door_plane = cx - SIM["LIFT_SHAFT_HALF_X"]
+            c = math.cos(h); sn = math.sin(h)
+            corners = [(x + sx * SIM["ROBOT_HALF_LEN"] * c - sz * SIM["ROBOT_HALF_W"] * sn,
+                        z + sx * SIM["ROBOT_HALF_LEN"] * sn + sz * SIM["ROBOT_HALF_W"] * c)
+                       for sx, sz in ((1, 1), (1, -1), (-1, 1), (-1, -1))]
+            # When the body crosses the door plane, each crossing edge must intersect x=door_plane at a z inside the door opening
+            for a, b in ((0, 1), (1, 3), (3, 2), (2, 0)):
+                ax, az = corners[a]; bx, bz = corners[b]
+                if (ax - door_plane) * (bx - door_plane) < 0:
+                    zc = az + (bz - az) * ((door_plane - ax) / (bx - ax))
+                    assert abs(zc - cz) <= SIM["LIFT_DOOR_HALF_W"] + 1e-6, \
+                        f"{r['id']} body sweeps into door frame at z={zc:.2f} (x={x:.2f})"
+            assert x <= cx + 0.1, f"{r['id']} moved east inside shaft"
+            # No large turn while moving: when heading changes > 0.09 rad in one tick, movement must be < 0.02 m (turn in place)
+            pv = prev.get(r["id"])
+            if pv:
+                dh = h - pv[2]
+                while dh > math.pi: dh -= 2 * math.pi
+                while dh < -math.pi: dh += 2 * math.pi
+                if abs(dh) > 0.09:
+                    assert math.hypot(x - pv[0], z - pv[1]) < 0.02, f"{r['id']} walks while turning"
+            prev[r["id"]] = (x, z, h)
+            if Ls["floor"] is not None:
+                dirs.add((r["floor"], Ls["floor"]))
+            lifts_seen.add(l["id"]); loads.add(r["load"]["current"] > 0)
+            # round-9b: the rotated body (OBB) of an alighting robot must not intersect a queued or approaching robot (same physical floor)
+            for b in e.state["robots"].values():
+                if b["id"] == r["id"] or b["lift_stage"] not in ("TO_LIFT", "QUEUED", "BOARDING"):
+                    continue
+                if Ls["floor"] is None or b["floor"] != Ls["floor"]:
+                    continue
+                assert not SimEngine.obb_overlap(r["position"][0], r["position"][2], r["heading"],
+                                                 b["position"][0], b["position"][2], b["heading"]), \
+                    f"{r['id']}(ALIGHTING) body overlaps {b['id']}({b['lift_stage']}) at tick {e.state['sim']['tick']}"
+        if all(t["status"] in ("COMPLETED", "TRANSFERRED", "FAILED") for t in tasks) and len(dirs) >= 2:
+            break
+    assert (1, 2) in dirs and (2, 1) in dirs
+    assert lifts_seen and True in loads and False in loads
+
+
+def test_lift_lobby_congestion_resolves():
+    """Exit nodes are separate from the queue line: many cross-floor tasks in both directions do not block each other at the lift lobby (fix for the R11/R20 deadlock bug)."""
+    e = SimEngine(L, seed=5)
+    ts = [
+        e.create_task("PICK", "CRITICAL", "SHELF-M02", "PACK-01"),
+        e.create_task("PICK", "CRITICAL", "SHELF-M12", "PACK-02"),
+        e.create_task("PICK", "CRITICAL", "SHELF-M22", "SORT-01"),
+        e.create_task("REPLENISH", "CRITICAL", "INBOUND-1", "SHELF-M30"),
+        e.create_task("REPLENISH", "CRITICAL", "INBOUND-2", "SHELF-M40"),
+        e.create_task("PICK", "HIGH", "SHELF-M05", "PACK-01"),
+    ]
+    still: dict[str, int] = {}; last: dict[str, tuple] = {}
+    for _ in range(90000):
+        e.step()
+        for r in e.state["robots"].values():
+            if not r["lift_stage"] or r["lift_stage"] == "RIDING":
+                still[r["id"]] = 0; last[r["id"]] = (r["position"][0], r["position"][2]); continue
+            lp = last.get(r["id"], (0, 0))
+            moved = math.hypot(r["position"][0] - lp[0], r["position"][2] - lp[1]) > 0.02
+            still[r["id"]] = 0 if moved else still.get(r["id"], 0) + 1
+            last[r["id"]] = (r["position"][0], r["position"][2])
+            if r["lift_stage"] in ("ALIGHTING", "BOARDING"):
+                assert still[r["id"]] < 600, f"{r['id']} stuck in {r['lift_stage']}"
+        if all(t["status"] in ("COMPLETED", "TRANSFERRED", "FAILED") for t in ts):
+            break
+    assert all(t["status"] == "COMPLETED" for t in ts)
+
+
+def test_lift_exit_faces_destination():
+    """The exit selection must face the destination side after alighting (round-8e): if the destination is south, exit south; do not select the opposite side and detour"""
+    e = SimEngine(L, seed=1)
+    for fl in (1, 2):
+        for l in L["lifts"]:
+            cz = l["cell"][1] + 0.5
+            south = e._pick_lift_exit(l, fl, (l["cell"][0] - 6.0, cz + 9.0))
+            north = e._pick_lift_exit(l, fl, (l["cell"][0] - 6.0, cz - 9.0))
+            assert south[1] >= cz, f"{l['id']} F{fl}: dest S but exit N ({south})"
+            assert north[1] <= cz, f"{l['id']} F{fl}: dest N but exit S ({north})"

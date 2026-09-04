@@ -1,0 +1,27 @@
+# dependencies / builds
+node_modules/
+dist/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# secrets & local state
+backend/.env
+*.db
+*.db-wal
+*.db-shm
+
+# local working files (kept out of the repo)
+*.docx
+/*.txt
+docs/DEMO.md
+docs/screenshots/
+docs/layout/layout_preview.png
+
+# editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+/.claude/

@@ -1,0 +1,7 @@
+# Direct runtime dependencies (ranges lock the minor version). The fully reproducible versions are in requirements.lock (Render / Docker use it).
+fastapi>=0.115,<0.142
+uvicorn[standard]>=0.30,<0.47
+pydantic>=2.7,<3
+websockets>=12,<18
+openai>=1.40,<4
+python-dotenv>=1.0,<2

@@ -1,0 +1,22 @@
+# Render Blueprint — in Render, click "New → Blueprint" and point it to this repo
+services:
+  - type: web
+    name: warehouse-twin-backend
+    runtime: python
+    rootDir: backend
+    plan: free
+    buildCommand: pip install -r requirements.lock
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11"
+      - key: TWIN_SEED
+        value: "42"
+      - key: TWIN_DB
+        value: /tmp/twin.db
+      - key: TWIN_CORS_ORIGINS
+        value: https://ware-twin.vercel.app   # Allow only the production domain (WS/POST check the Origin). To let Vercel preview connect too,
+                                              # add TWIN_CORS_REGEX=https://ware-twin-[a-z0-9]+-<your scope slug>\.vercel\.app
+      - key: TWIN_TRUSTED_PROXIES
+        value: "1"                            # The Render proxy appends the real IP to the end of X-Forwarded-For
