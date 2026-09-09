@@ -48,7 +48,7 @@ function NarrowScreenGate({ children }: { children: React.ReactNode }) {
   if (narrow && !dismissed) {
     return (
       <div className="narrow-gate">
-        <div className="brand"><span className="ai">Ware</span><span>Twin</span></div>
+        <div className="brand"><span className="ai">Twin</span><span>House</span></div>
         <h2>Designed for desktop</h2>
         <p>TwinHouse is a 3D operations console that works best on screens ≥ 1280 px wide (it still runs, scaled down, from 1024 px). On a phone the interface would shrink to about a quarter of its size and become unreadable.</p>
         <p>Open <b>twin-house.vercel.app</b> on a laptop or desktop browser for the full experience.</p>

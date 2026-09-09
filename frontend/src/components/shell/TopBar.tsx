@@ -18,7 +18,7 @@ export function TopBar() {
   const simDate = "2026/05/20";
   return (
     <header className="topbar">
-      <div className="brand"><span className="ai">Ware</span><span>Twin</span><span className="brand-sub">Warehouse Digital Twin</span></div>
+      <div className="brand"><span className="ai">Twin</span><span>House</span><span className="brand-sub">Digital Twin Warehouse</span></div>
       <span className={"badge-live " + (paused ? "paused" : mode === "WHATIF" ? "whatif" : "live")}>
         <span className="dot" style={{ background: "currentColor", width: 6, height: 6 }} />{paused ? "PAUSED" : mode === "WHATIF" ? "SIMULATION" : "LIVE"}
       </span>

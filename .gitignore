@@ -25,3 +25,4 @@ docs/layout/layout_preview.png
 .DS_Store
 Thumbs.db
 /.claude/
+/.agentkit/
