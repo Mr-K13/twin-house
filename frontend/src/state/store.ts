@@ -8,6 +8,7 @@ export type Quality = "low" | "medium" | "high";
 export type SceneTool = "select" | "pan" | "paths" | "labels" | "measure";
 
 export const layout = layoutJson as unknown as WarehouseLayout;
+export type ModalKind = null | "audit" | "tasks" | "robot" | "fleet" | "catalog";
 
 interface Store {
   twin: TwinState;
@@ -45,8 +46,8 @@ interface Store {
   heat: Record<string, HeatmapLayer> | null;
   setHeat: (l: HeatmapLayer | null) => void;
   /** Phase 4 UI: Modal / drawers */
-  modal: null | "audit" | "tasks" | "robot" | "fleet";
-  setModal: (m: null | "audit" | "tasks" | "robot" | "fleet") => void;
+  modal: ModalKind;
+  setModal: (m: ModalKind) => void;
   /** Short notice (for example, the backend returns RATE_LIMITED); null = hidden */
   notice: { text: string; kind: "warn" | "info"; until: number } | null;
   setNotice: (text: string | null, kind?: "warn" | "info") => void;

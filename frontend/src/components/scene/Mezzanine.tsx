@@ -139,7 +139,7 @@ export function liftLabel(L: LiftState | undefined): string {
  *  interlocked bi-parting safety doors on each floor, door-frame indicator lights, anti-slip steel platform (yellow-black edges,
  *  docking marker, bumper), sill and leveling indicators.
  *  The transparent cyan is only the Digital Twin occupancy overlay. It is not the platform body. */
-function Lift({ l, elev, lite }: { l: (typeof layout.lifts)[number]; elev: number; lite: boolean }) {
+export function Lift({ l, elev, lite }: { l: (typeof layout.lifts)[number]; elev: number; lite: boolean }) {
   const platRef = useRef<THREE.Group>(null!);
   const leafRefs = useRef<Array<THREE.Mesh | null>>([null, null, null, null]);   // [f1L, f1R, f2L, f2R]
   const lightRef = useRef<THREE.MeshBasicMaterial>(null!);

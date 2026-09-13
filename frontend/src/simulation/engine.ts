@@ -68,6 +68,10 @@ export const SIM = {
   EVENT_RING: THRESHOLDS.EVENT_RING_SIZE,
   ZONE_CAPACITY: 6,          // Robot count above which a zone counts as congested
 };
+/** Per-robot defaults applied at spawn (also shown in the asset catalog) */
+export const ROBOT_DEFAULTS = { model: "AMR-L", load_capacity: 4 } as const;
+/** Station dwell multiplier when the conveyor that feeds it is faulted / degraded (Demo 04 bottleneck) */
+export const CONVEYOR_FAULT_DWELL = { FAULT: 4, DEGRADED: 2 } as const;
 
 export function mulberry32(seed: number) {
   return () => { seed |= 0; seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -222,9 +226,9 @@ export class SimEngine {
     const robots: Record<string, RobotState> = {};
     for (const sp of L.spawn.robots) {
       robots[sp.id] = {
-        id: sp.id, model: "AMR-L", position: [Math.floor(sp.position[0]) + 0.5, 0, Math.floor(sp.position[2]) + 0.5], heading: sp.heading, velocity: 0, max_speed: SIM.MAX_SPEED, floor: sp.floor ?? 1, lift_id: null, lift_stage: null,
+        id: sp.id, model: ROBOT_DEFAULTS.model, position: [Math.floor(sp.position[0]) + 0.5, 0, Math.floor(sp.position[2]) + 0.5], heading: sp.heading, velocity: 0, max_speed: SIM.MAX_SPEED, floor: sp.floor ?? 1, lift_id: null, lift_stage: null,
         battery: sp.battery, status: "IDLE", fsm: "IDLE", health: 95 + Math.floor(this.rng() * 5), current_task_id: null, destination: null,
-        path: [], path_index: 0, load: { current: 0, capacity: 4 }, zone: null, eta_s: null, fsm_since_tick: 0,
+        path: [], path_index: 0, load: { current: 0, capacity: ROBOT_DEFAULTS.load_capacity }, zone: null, eta_s: null, fsm_since_tick: 0,
         stats: { distance_m: 0, tasks_completed: 0, energy_wh: 0, busy_ticks: 0, wait_ticks: 0 },
         perception: { state: "CLEAR", ahead_m: SIM.LIDAR_RANGE, nearest_m: null, obstacles: [] },
       };
@@ -1214,7 +1218,7 @@ export class SimEngine {
     const cv = this.layout.conveyors.find((c) => c.feeds === locId);
     if (!cv) return 1;
     const st = this.state.conveyors[cv.id]?.status;
-    return st === "ERROR" || st === "STOPPED" ? 4 : st === "WARNING" || st === "MAINTENANCE" ? 2 : 1;
+    return st === "ERROR" || st === "STOPPED" ? CONVEYOR_FAULT_DWELL.FAULT : st === "WARNING" || st === "MAINTENANCE" ? CONVEYOR_FAULT_DWELL.DEGRADED : 1;
   }
   /** Every 10 ticks: sensor readings and conveyor throughput (decorative, but derived from the real state) */
   private updateDevices() {

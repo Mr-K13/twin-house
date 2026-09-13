@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useStore } from "../../state/store";
 
 export function Panel({ title, sub, action, children, grow, style }: { title: string; sub?: string; action?: ReactNode; children: ReactNode; grow?: boolean; style?: React.CSSProperties }) {
   return (
@@ -24,6 +25,12 @@ export function StatRow({ label, value, color, delta, deltaColor, big }: { label
   );
 }
 
+/** Modal header with title, optional actions, and the close button (shared by every modal) */
+export function Head({ title, children }: { title: string; children?: ReactNode }) {
+  const setModal = useStore((s) => s.setModal);
+  return <header className="modal-h"><span>{title}</span><span className="spacer" />{children}<button className="icon-btn" aria-label="Close" onClick={() => setModal(null)}>✕</button></header>;
+}
+
 export function Dot({ color, size = 7 }: { color: string; size?: number }) {
   return <span className="dot" style={{ background: color, width: size, height: size, boxShadow: `0 0 6px ${color}88` }} />;
 }
@@ -45,6 +52,7 @@ export const Icon = {
   bolt: <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 3 14h8l-1 8 10-12h-8z" /></svg>,
   brain: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9.5 2a3 3 0 0 0-3 3v1a3 3 0 0 0-2 5 3 3 0 0 0 1 5.8A3 3 0 0 0 9 21h1V2zM14.5 2a3 3 0 0 1 3 3v1a3 3 0 0 1 2 5 3 3 0 0 1-1 5.8A3 3 0 0 1 15 21h-1V2z" /></svg>,
   fork: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="6" cy="4" r="2" /><circle cx="18" cy="4" r="2" /><circle cx="12" cy="20" r="2" /><path d="M6 6v2a4 4 0 0 0 4 4h4a4 4 0 0 0 4-4V6M12 12v6" /></svg>,
+  grid: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>,
   check: <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="m5 12 5 5L20 7" /></svg>,
   warn: <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 1 21h22z" /></svg>,
 };

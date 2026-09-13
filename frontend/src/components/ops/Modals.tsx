@@ -3,13 +3,15 @@
  *  - AuditLog: full event record. online fetches 500 rows from the backend SQLite (/api/events) with filters; local uses the local ring. Export to CSV / JSON is possible.
  *  - TaskTable: all tasks + a create-task form (source/destination options come from layout.locations).
  *  - RobotDetail: the full fields of spec 3️⃣ + cumulative statistics + the recent events of that robot + fail/recover buttons.
+ *  - CatalogModal (separate file): asset types → parameter schema, characteristics, instances.
  */
 import { useEffect, useMemo, useState } from "react";
 import { STATUS_COLOR, layout, tickToClock, useStore } from "../../state/store";
 import { simControl } from "../../simulation/runner";
 import { API_URL } from "../../services/ws";
 import type { TwinEvent, TaskPriority, TaskType } from "../../schema/twin_state";
-import { Dot } from "../ui/primitives";
+import { Dot, Head } from "../ui/primitives";
+import { CatalogModal } from "./CatalogModal";
 import { useFocusTrap } from "../ui/useFocusTrap";
 import { percText } from "../panels/RightPanels";
 import { taskError } from "../../simulation/rules";
@@ -20,22 +22,18 @@ export function Modals() {
   useEffect(() => { const h = (e: KeyboardEvent) => e.key === "Escape" && setModal(null); window.addEventListener("keydown", h); return () => window.removeEventListener("keydown", h); }, [setModal]);
   const trap = useFocusTrap<HTMLDivElement>(!!modal);
   if (!modal) return null;
-  const titles = { audit: "Audit / Event Log", tasks: "Tasks", robot: "Robot details", fleet: "Robot fleet" } as const;
+  const titles = { audit: "Audit / Event Log", tasks: "Tasks", robot: "Robot details", fleet: "Robot fleet", catalog: "Asset catalog" } as const;
   return (
     <div className="modal-bg" onClick={() => setModal(null)}>
-      <div className="modal" role="dialog" aria-modal="true" aria-label={titles[modal]} tabIndex={-1} ref={trap} onClick={(e) => e.stopPropagation()}>
+      <div className={"modal" + (modal === "catalog" ? " catalog" : "")} role="dialog" aria-modal="true" aria-label={titles[modal]} tabIndex={-1} ref={trap} onClick={(e) => e.stopPropagation()}>
         {modal === "audit" && <AuditLog />}
         {modal === "tasks" && <TaskTable />}
         {modal === "robot" && <RobotDetail />}
         {modal === "fleet" && <FleetList />}
+        {modal === "catalog" && <CatalogModal />}
       </div>
     </div>
   );
-}
-
-function Head({ title, children }: { title: string; children?: React.ReactNode }) {
-  const setModal = useStore((s) => s.setModal);
-  return <header className="modal-h"><span>{title}</span><span className="spacer" />{children}<button className="icon-btn" aria-label="Close" onClick={() => setModal(null)}>✕</button></header>;
 }
 
 // ─────────────────────────────────────────────────────────────

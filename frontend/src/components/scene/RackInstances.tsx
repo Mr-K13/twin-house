@@ -1,6 +1,7 @@
 import { useLayoutEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { layout } from "../../state/store";
+import type { LayoutRack } from "../../layout/types";
 import { mulberry32 } from "../../simulation/engine";
 
 const dummy = new THREE.Object3D();
@@ -11,7 +12,7 @@ const BOX_PALETTE = ["#b8834a", "#c99a63", "#a87440", "#d2a874", "#9c6b3c"];
  * 160 racks. Each rack: uprights ×4 + beams ×levels. Boxes fill the levels at random (fixed seed).
  * All use InstancedMesh: three draw calls render all racks and boxes in the warehouse.
  */
-export function RackInstances({ castShadow = true, floor = 1, yOffset = 0 }: { castShadow?: boolean; floor?: number; yOffset?: number }) {
+export function RackInstances({ castShadow = true, floor = 1, yOffset = 0, racks }: { castShadow?: boolean; floor?: number; yOffset?: number; /** Explicit rack list (catalog preview); default = every layout rack on `floor` */ racks?: readonly LayoutRack[] }) {
   const postRef = useRef<THREE.InstancedMesh>(null!);
   const beamRef = useRef<THREE.InstancedMesh>(null!);
   const boxRef = useRef<THREE.InstancedMesh>(null!);
@@ -20,8 +21,8 @@ export function RackInstances({ castShadow = true, floor = 1, yOffset = 0 }: { c
     const rnd = mulberry32(1234);
     const posts: THREE.Matrix4[] = [], beams: THREE.Matrix4[] = [];
     const boxes: { m: THREE.Matrix4; c: string }[] = [];
-    for (const r of layout.racks) {
-      if ((r.floor ?? 1) !== floor) continue;
+    for (const r of racks ?? layout.racks) {
+      if (!racks && (r.floor ?? 1) !== floor) continue;
       const [x, , z] = r.position; const [w, h, d] = r.size;
       const levelH = h / r.levels;
       for (const [dx, dz] of [[0, 0], [w, 0], [0, d], [w, d]]) {
@@ -46,7 +47,7 @@ export function RackInstances({ castShadow = true, floor = 1, yOffset = 0 }: { c
       }
     }
     return { posts, beams, boxes };
-  }, [floor]);
+  }, [floor, racks]);
 
   useLayoutEffect(() => {
     data.posts.forEach((m, i) => postRef.current.setMatrixAt(i, m));

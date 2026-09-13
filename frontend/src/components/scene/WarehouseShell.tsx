@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import * as THREE from "three";
 import { layout } from "../../state/store";
+import type { LayoutDock } from "../../layout/types";
 
 /** Floor, outer walls, pillars, roof trusses, dock doors, light fixtures */
 export function WarehouseShell({ lite = false }: { lite?: boolean }) {
@@ -82,23 +83,7 @@ export function WarehouseShell({ lite = false }: { lite?: boolean }) {
         </mesh>
       ))}
       {/* Dock doors */}
-      {layout.docks.map((d) => (
-        <group key={d.id} position={[d.door[0], 0, 0.25]}>
-          <mesh position={[0, 2.4, 0]}>
-            <boxGeometry args={[5.5, 4.8, 0.3]} />
-            <meshStandardMaterial color="#0e1a2b" roughness={0.6} metalness={0.4} emissive={d.kind === "INBOUND" ? "#14532d" : "#164e63"} emissiveIntensity={0.6} />
-          </mesh>
-          <mesh position={[0, 5, 0]}>
-            <boxGeometry args={[6.2, 0.3, 0.5]} />
-            <meshBasicMaterial color={d.kind === "INBOUND" ? "#22c55e" : "#22d3ee"} />
-          </mesh>
-          {/* Truck trailer (outside the dock) */}
-          <mesh position={[0, 1.9, -5]}>
-            <boxGeometry args={[2.6, 3.2, 9]} />
-            <meshStandardMaterial color="#d9dee7" roughness={0.5} metalness={0.2} />
-          </mesh>
-        </group>
-      ))}
+      {layout.docks.map((d) => <DockModel key={d.id} d={d} />)}
       {/* Ceiling lights */}
       {!lite && Array.from({ length: 4 }, (_, r) => Array.from({ length: 6 }, (_, c) => (
         <mesh key={`${r}-${c}`} position={[10 + c * 16, H - 1, 9 + r * 17]}>
@@ -106,6 +91,27 @@ export function WarehouseShell({ lite = false }: { lite?: boolean }) {
           <meshBasicMaterial color="#dbeafe" />
         </mesh>
       )))}
+    </group>
+  );
+}
+
+/** Loading dock on the north wall: door panel tinted by kind, header light bar, and a truck trailer parked outside */
+export function DockModel({ d }: { d: LayoutDock }) {
+  return (
+    <group position={[d.door[0], 0, 0.25]}>
+      <mesh position={[0, 2.4, 0]}>
+        <boxGeometry args={[5.5, 4.8, 0.3]} />
+        <meshStandardMaterial color="#0e1a2b" roughness={0.6} metalness={0.4} emissive={d.kind === "INBOUND" ? "#14532d" : "#164e63"} emissiveIntensity={0.6} />
+      </mesh>
+      <mesh position={[0, 5, 0]}>
+        <boxGeometry args={[6.2, 0.3, 0.5]} />
+        <meshBasicMaterial color={d.kind === "INBOUND" ? "#22c55e" : "#22d3ee"} />
+      </mesh>
+      {/* Truck trailer (outside the dock) */}
+      <mesh position={[0, 1.9, -5]}>
+        <boxGeometry args={[2.6, 3.2, 9]} />
+        <meshStandardMaterial color="#d9dee7" roughness={0.5} metalness={0.2} />
+      </mesh>
     </group>
   );
 }

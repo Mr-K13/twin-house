@@ -3,10 +3,10 @@ import { useFrame } from "@react-three/fiber";
 import { Html } from "@react-three/drei";
 import * as THREE from "three";
 import { layout, useStore } from "../../state/store";
-import type { LayoutConveyor } from "../../layout/types";
+import type { LayoutConveyor, LayoutStation, LayoutCharging, LayoutSensor } from "../../layout/types";
 
 /** Conveyor: extruded along path. When RUNNING, parcels move along the belt (speed = simulated speed_mps × playback speed). When ERROR, the belt blinks red and parcels stop. */
-function Conveyor({ c }: { c: LayoutConveyor }) {
+export function Conveyor({ c }: { c: LayoutConveyor }) {
   const status = useStore((s) => s.twin.conveyors[c.id]?.status ?? "RUNNING");
   const beltSpeed = useStore((s) => s.twin.conveyors[c.id]?.speed_mps ?? c.speed_mps);
   const matRef = useRef<THREE.MeshStandardMaterial>(null!);
@@ -105,6 +105,59 @@ function Conveyor({ c }: { c: LayoutConveyor }) {
   return <group>{segs}{parcels}{endEquip}</group>;
 }
 
+/** Workstation (PACKING / SORTING): tinted floor, workbenches with a parcel, a robotic arm on every other packing bench, and a sign */
+export function StationModel({ s, lite }: { s: LayoutStation; lite?: boolean }) {
+  const [x0, z0, x1, z1] = s.rect; const w = x1 - x0, d = z1 - z0;
+  return (
+    <group position={[(x0 + x1) / 2, 0, (z0 + z1) / 2]}>
+      <mesh position={[0, 0.005, 0]} rotation-x={-Math.PI / 2}>
+        <planeGeometry args={[w, d]} />
+        <meshBasicMaterial color={s.kind === "PACKING" ? "#1e3a5f" : "#3b2a5f"} transparent opacity={0.35} />
+      </mesh>
+      {/* Workbenches */}
+      {Array.from({ length: Math.floor(w / 4) }, (_, i) => (
+        <group key={i} position={[-w / 2 + 2 + i * 4, 0, 0]}>
+          <mesh position={[0, 0.45, 0]} castShadow><boxGeometry args={[2.4, 0.9, 1.2]} /><meshStandardMaterial color="#334155" metalness={0.4} roughness={0.6} /></mesh>
+          <mesh position={[0, 1.15, 0]}><boxGeometry args={[0.8, 0.5, 0.7]} /><meshStandardMaterial color="#c49a6c" /></mesh>
+          {/* Robotic arm (Packing) */}
+          {s.kind === "PACKING" && i % 2 === 0 && (
+            <group position={[1.6, 0, 0]}>
+              <mesh position={[0, 0.3, 0]}><cylinderGeometry args={[0.35, 0.45, 0.6, 16]} /><meshStandardMaterial color="#1f2937" metalness={0.7} roughness={0.3} /></mesh>
+              <mesh position={[0, 1.2, 0]} rotation-z={0.35}><boxGeometry args={[0.3, 1.8, 0.3]} /><meshStandardMaterial color="#e5e7eb" metalness={0.5} roughness={0.3} /></mesh>
+              <mesh position={[-0.5, 2.1, 0]} rotation-z={-0.9}><boxGeometry args={[0.25, 1.5, 0.25]} /><meshStandardMaterial color="#e5e7eb" metalness={0.5} roughness={0.3} /></mesh>
+            </group>
+          )}
+        </group>
+      ))}
+      {!lite && <Html position={[0, 0.1, d / 2 + 1]} center zIndexRange={[2, 0]} style={{ pointerEvents: "none" }}>
+        <div className="sign-lbl" style={{ color: s.kind === "PACKING" ? "#93c5fd" : "#d8b4fe", borderColor: s.kind === "PACKING" ? "#1d4ed8" : "#7e22ce" }}>{s.kind}</div>
+      </Html>}
+    </group>
+  );
+}
+
+/** Charging station: charger pillar with a status panel and a floor pad in front (blue when a robot is docked) */
+export function ChargerModel({ c, occupied = false, lite }: { c: LayoutCharging; occupied?: boolean; lite?: boolean }) {
+  return (
+    <group position={[c.position[0], 0, c.position[2]]}>
+      <mesh position={[0, 0.6, 0]} castShadow><boxGeometry args={[0.8, 1.2, 0.4]} /><meshStandardMaterial color="#1f2937" metalness={0.6} roughness={0.4} /></mesh>
+      <mesh position={[0, 0.9, 0.21]}><planeGeometry args={[0.5, 0.25]} /><meshBasicMaterial color={occupied ? "#3b82f6" : "#22c55e"} /></mesh>
+      <mesh position={[0, 0.01, -1.9]} rotation-x={-Math.PI / 2}><planeGeometry args={[1.6, 1.6]} /><meshBasicMaterial color="#1d4ed8" transparent opacity={0.25} /></mesh>
+      {occupied && <pointLight position={[0, 1, -1.9]} color="#3b82f6" intensity={lite ? 0 : 3} distance={4} />}
+    </group>
+  );
+}
+
+/** Fixed sensor: a small cyan marker at the mount position */
+export function SensorModel({ s }: { s: LayoutSensor }) {
+  return (
+    <mesh position={s.position}>
+      <sphereGeometry args={[0.18, 12, 12]} />
+      <meshBasicMaterial color="#22d3ee" />
+    </mesh>
+  );
+}
+
 /** Stations, charging stations, parking areas, restricted areas, walkways, sensors */
 export function Fixtures({ lite = false }: { lite?: boolean }) {
   const robots = useStore((s) => s.twin.robots);
@@ -112,47 +165,9 @@ export function Fixtures({ lite = false }: { lite?: boolean }) {
     <group>
       {layout.conveyors.map((c) => <Conveyor key={c.id} c={c} />)}
 
-      {layout.stations.map((s) => {
-        const [x0, z0, x1, z1] = s.rect; const w = x1 - x0, d = z1 - z0;
-        return (
-          <group key={s.id} position={[(x0 + x1) / 2, 0, (z0 + z1) / 2]}>
-            <mesh position={[0, 0.005, 0]} rotation-x={-Math.PI / 2}>
-              <planeGeometry args={[w, d]} />
-              <meshBasicMaterial color={s.kind === "PACKING" ? "#1e3a5f" : "#3b2a5f"} transparent opacity={0.35} />
-            </mesh>
-            {/* Workbenches */}
-            {Array.from({ length: Math.floor(w / 4) }, (_, i) => (
-              <group key={i} position={[-w / 2 + 2 + i * 4, 0, 0]}>
-                <mesh position={[0, 0.45, 0]} castShadow><boxGeometry args={[2.4, 0.9, 1.2]} /><meshStandardMaterial color="#334155" metalness={0.4} roughness={0.6} /></mesh>
-                <mesh position={[0, 1.15, 0]}><boxGeometry args={[0.8, 0.5, 0.7]} /><meshStandardMaterial color="#c49a6c" /></mesh>
-                {/* Robotic arm (Packing) */}
-                {s.kind === "PACKING" && i % 2 === 0 && (
-                  <group position={[1.6, 0, 0]}>
-                    <mesh position={[0, 0.3, 0]}><cylinderGeometry args={[0.35, 0.45, 0.6, 16]} /><meshStandardMaterial color="#1f2937" metalness={0.7} roughness={0.3} /></mesh>
-                    <mesh position={[0, 1.2, 0]} rotation-z={0.35}><boxGeometry args={[0.3, 1.8, 0.3]} /><meshStandardMaterial color="#e5e7eb" metalness={0.5} roughness={0.3} /></mesh>
-                    <mesh position={[-0.5, 2.1, 0]} rotation-z={-0.9}><boxGeometry args={[0.25, 1.5, 0.25]} /><meshStandardMaterial color="#e5e7eb" metalness={0.5} roughness={0.3} /></mesh>
-                  </group>
-                )}
-              </group>
-            ))}
-            {!lite && <Html position={[0, 0.1, d / 2 + 1]} center zIndexRange={[2, 0]} style={{ pointerEvents: "none" }}>
-              <div className="sign-lbl" style={{ color: s.kind === "PACKING" ? "#93c5fd" : "#d8b4fe", borderColor: s.kind === "PACKING" ? "#1d4ed8" : "#7e22ce" }}>{s.kind}</div>
-            </Html>}
-          </group>
-        );
-      })}
+      {layout.stations.map((s) => <StationModel key={s.id} s={s} lite={lite} />)}
 
-      {layout.charging_stations.map((c) => {
-        const occupied = Object.values(robots).some((r) => r.status === "CHARGING" && Math.abs(r.position[0] - c.position[0]) < 1);
-        return (
-          <group key={c.id} position={[c.position[0], 0, c.position[2]]}>
-            <mesh position={[0, 0.6, 0]} castShadow><boxGeometry args={[0.8, 1.2, 0.4]} /><meshStandardMaterial color="#1f2937" metalness={0.6} roughness={0.4} /></mesh>
-            <mesh position={[0, 0.9, 0.21]}><planeGeometry args={[0.5, 0.25]} /><meshBasicMaterial color={occupied ? "#3b82f6" : "#22c55e"} /></mesh>
-            <mesh position={[0, 0.01, -1.9]} rotation-x={-Math.PI / 2}><planeGeometry args={[1.6, 1.6]} /><meshBasicMaterial color="#1d4ed8" transparent opacity={0.25} /></mesh>
-            {occupied && <pointLight position={[0, 1, -1.9]} color="#3b82f6" intensity={lite ? 0 : 3} distance={4} />}
-          </group>
-        );
-      })}
+      {layout.charging_stations.map((c) => <ChargerModel key={c.id} c={c} lite={lite} occupied={Object.values(robots).some((r) => r.status === "CHARGING" && Math.abs(r.position[0] - c.position[0]) < 1)} />)}
 
       {layout.parking.map((p) => {
         const [x0, z0, x1, z1] = p.rect;
@@ -188,12 +203,7 @@ export function Fixtures({ lite = false }: { lite?: boolean }) {
         );
       })}
 
-      {!lite && layout.sensors.map((s) => (
-        <mesh key={s.id} position={s.position}>
-          <sphereGeometry args={[0.18, 12, 12]} />
-          <meshBasicMaterial color="#22d3ee" />
-        </mesh>
-      ))}
+      {!lite && layout.sensors.map((s) => <SensorModel key={s.id} s={s} />)}
     </group>
   );
 }

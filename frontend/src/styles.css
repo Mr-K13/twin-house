@@ -322,6 +322,26 @@ table.dt.full td { white-space: normal; }
 .ai-mode.llm { color: #6d28d9; border-color: #c4b5fd; background: #f5f3ff; }
 .chip.on { color: var(--accent); border-color: var(--accent); background: rgba(37,99,235,.08); }
 
+/* ── Catalog modal ────────────────────────────── */
+.modal.catalog { width: min(1400px, 96vw); height: min(820px, 94vh); }
+.catalog-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 220px 1fr; }
+.catalog-nav { padding: 10px; border-right: 1px solid var(--border); overflow: auto; }
+.catalog-nav .wi-item { width: 100%; text-align: left; }
+.catalog-nav .wi-item .count { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.catalog-detail { padding: 12px 16px; overflow: auto; min-width: 0; }
+.catalog-detail .drawer-sub:first-child { margin-top: 0; }
+.catalog-variants { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.catalog-variants .chip { cursor: default; }
+.catalog-variants .chip b { color: var(--text); font-family: var(--mono); font-weight: 500; }
+.catalog-table { max-height: 380px; overflow: auto; border: 1px solid var(--border); border-radius: 6px; }
+.catalog-table thead th { position: sticky; top: 0; background: var(--panel); z-index: 1; }
+.catalog-table td, .catalog-table th { white-space: nowrap; }
+.catalog-body .src { font-family: var(--mono); color: var(--muted); font-size: 11px; }
+.catalog-top { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 16px; align-items: start; }
+.catalog-3d { position: relative; height: 240px; border-radius: 8px; border: 1px solid var(--border); overflow: hidden; background: radial-gradient(ellipse at 50% 60%, #dbe4f0 0%, #f1f5f9 70%); }
+.catalog-3d canvas { display: block; }
+.catalog-3d .cap { position: absolute; left: 8px; bottom: 6px; font-family: var(--mono); font-size: 10.5px; color: var(--muted); pointer-events: none; }
+
 /* Batch 2: notice and narrow-screen gate */
 .notice { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); z-index: 60; padding: 9px 14px; border-radius: 8px; font-size: 12.5px; border: 1px solid var(--border-strong); background: var(--panel); color: var(--text); box-shadow: 0 8px 24px rgba(15,23,42,.18); cursor: pointer; max-width: 560px; }
 .notice.warn { border-color: #f59e0b; color: #b45309; }
