@@ -8,6 +8,7 @@ Protection layer for the public demo (batch 2 review fixes)
         mutate  inject / clear / create task / play, pause, reset      20 calls / minute
         ai      Copilot / VLM                           10 calls / minute
         whatif  What-if                                  4 calls / minute
+        scenario  scenario workspace auto-save (PUT /api/scenarios/{id})   120 calls / minute
         ws      total messages per WebSocket connection                120 calls / minute
     TWIN_RATE_LIMIT=0 turns it off (tests / local development).
   - Body size limit: REST 512 KB (counted as real bytes at the ASGI receive layer), WS 64 KB per message (UTF-8 bytes).
@@ -28,6 +29,7 @@ LIMITS: dict[str, tuple[int, float]] = {   # bucket → (max calls, window secon
     "mutate": (20, 60.0),
     "ai": (10, 60.0),
     "whatif": (4, 60.0),
+    "scenario": (120, 60.0),   # debounced auto-save (≤ 1 PUT per 800 ms of edits) must never trip the 20/min mutate bucket
     "ws": (120, 60.0),
 }
 

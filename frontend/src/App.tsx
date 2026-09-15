@@ -10,6 +10,9 @@ import { ScenariosDrawer } from "./components/ops/ScenariosDrawer";
 import { OpsDrawer } from "./components/ops/OpsDrawer";
 import { Modals } from "./components/ops/Modals";
 import { WhatIfDrawer } from "./components/ops/WhatIfDrawer";
+import { useHashRoute } from "./router";
+import { ScenariosPage } from "./components/scenario/ScenariosPage";
+import { WorkspacePage } from "./components/scenario/WorkspacePage";
 
 /**
  * The layout design base is 1536×860 CSS px. On a smaller window, scale the full layout down so that all panels stay visible
@@ -94,6 +97,14 @@ function Console() {
   );
 }
 
+/** Hash routes: `#/` console, `#/scenarios`, `#/workspace/<id>`. The setup pages render outside Console, so no WebSocket or engine loop runs while editing a scenario. */
+function Routed() {
+  const route = useHashRoute();
+  if (route.page === "scenarios") return <ScenariosPage />;
+  if (route.page === "workspace") return <WorkspacePage id={route.id} />;
+  return <Console />;
+}
+
 export default function App() {
-  return <NarrowScreenGate><Console /></NarrowScreenGate>;
+  return <NarrowScreenGate><Routed /></NarrowScreenGate>;
 }

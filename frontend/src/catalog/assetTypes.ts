@@ -1,9 +1,9 @@
 /**
- * Asset catalog: one entry per physical equipment type (rack, robot, conveyor, station, charging, lift, camera, sensor, dock).
+ * Asset catalog: one entry per physical equipment type (rack, robot, conveyor, station, charging, lift, camera, sensor, dock, worker, forklift).
  *  - Parameter schema: adapted from layout/types.ts and docs/layout/warehouse_layout_format.md.
  *  - Characteristics: every value is imported from SIM / THRESHOLDS / LIFT_SHAFT / TASK_RULES / the layout. No number is restated here,
  *    so the catalog cannot drift from the engine.
- *  - Instances: read from the bundled warehouse_layout.json (cells and variant counts are computed once at module load).
+ *  - Instances: read from the bundled warehouse_layout.json (people: the decorative placements in scene/People.tsx); cells and variant counts are computed once at module load.
  */
 import { layout } from "../state/store";
 import type { WarehouseLayout, LayoutRack, LayoutSpawnRobot, LayoutConveyor, LayoutStation, LayoutCharging, LayoutLift, LayoutCamera, LayoutSensor, LayoutDock, P2, P3, Rect } from "../layout/types";
@@ -11,6 +11,8 @@ import { SIM, ROBOT_DEFAULTS, CONVEYOR_FAULT_DWELL } from "../simulation/engine"
 import { THRESHOLDS } from "../schema/twin_state";
 import { LIFT_SHAFT } from "../components/scene/Mezzanine";
 import { TASK_RULES } from "../simulation/rules";
+import { STATIC_PEOPLE, FORKLIFT_BODY } from "../components/scene/People";
+import type { PersonState } from "../schema/twin_state";
 
 export interface SchemaField { name: string; type: string; unit?: string; description: string; optional?: boolean }
 export interface Characteristic { label: string; value: string | number; unit?: string; source: string }
@@ -382,4 +384,57 @@ const dock = defineType<LayoutDock>({
   ],
 });
 
-export const ASSET_TYPES: readonly CatalogEntry[] = [rack, robot, conveyor, station, charging, lift, camera, sensor, dock];
+const F_PERSON: SchemaField[] = [
+  { name: "id", type: "string", description: "Unique id; an intrusion spawns H-<zone>-<tick>" },
+  { name: "kind", type: "WORKER | FORKLIFT", description: "Person kind; selects the 3D model" },
+  { name: "position", type: "[x, y, z]", unit: "m", description: "Current position" },
+  { name: "heading", type: "number", unit: "rad", description: "Facing direction; 0 points to +x" },
+  { name: "zone", type: "string | null", description: "Zone the person occupies; that zone is BLOCKED for robots while a person is inside" },
+  F_FLOOR,
+  { name: "expires_tick", type: "integer | null", unit: "tick", description: "The person disappears at this tick; null = permanent" },
+];
+const walkwayLimit = layout.walkways.map((w) => w.speed_limit_mps);
+const personCols: Column<PersonState>[] = [
+  { key: "id", label: "ID", get: (p) => p.id },
+  { key: "kind", label: "Kind", get: (p) => p.kind },
+  { key: "floor", label: "Floor", get: (p) => p.floor ?? 1 },
+  { key: "pos", label: "Position x, z", get: (p) => `${p.position[0]}, ${p.position[2]}` },
+  { key: "heading", label: "Heading °", get: (p) => deg(p.heading) },
+  { key: "zone", label: "Zone", get: (p) => p.zone ?? "— (maintenance area)" },
+  { key: "expires", label: "Expires", get: (p) => (p.expires_tick === null ? "never (decorative)" : p.expires_tick) },
+];
+
+const worker = defineType<PersonState>({
+  id: "worker", label: "Worker", description: "Human worker in a hi-vis vest and hard hat. The placed workers stand in the maintenance area, which robots cannot enter. A HUMAN_INTRUSION injection spawns a worker inside a zone: the zone is marked BLOCKED, robots routed through it stop with OBSTACLE_DETECTED, and every robot's virtual LiDAR reports the person as a HUMAN obstacle until it expires.",
+  rows: () => STATIC_PEOPLE.filter((p) => p.kind === "WORKER"),
+  fields: F_PERSON,
+  characteristics: [
+    { label: "Spawned by", value: "HUMAN_INTRUSION injection (Scenarios / What-if)", source: "engine.inject" },
+    { label: "Effect on the zone", value: "BLOCKED until the last person expires; robots inside get OBSTACLE_DETECTED", source: "engine.inject / expirePeople" },
+    { label: "LiDAR classification", value: "HUMAN", source: "engine.perceive" },
+    { label: "Robot stops when a person is ahead within", value: SIM.PERC_STOP, unit: "m", source: "SIM.PERC_STOP" },
+    { label: "Robot slows when a person is ahead within", value: SIM.PERC_SLOW, unit: "m", source: "SIM.PERC_SLOW" },
+    { label: "Robot speed limit on walkways", value: walkwayLimit.length ? [...new Set(walkwayLimit)].join(" / ") : "—", unit: "m/s", source: "layout.walkways.speed_limit_mps" },
+    { label: "Task roles", value: "none (people are never task locations)", source: "TASK_RULES" },
+  ],
+  columns: personCols,
+  variants: [{ label: "floor", key: (p) => p.floor ?? 1 }, { label: "zone", key: (p) => p.zone ?? "—" }],
+});
+
+const forklift = defineType<PersonState>({
+  id: "forklift", label: "Forklift", description: "Manned forklift. The current simulation only places it as decoration in the maintenance area; the FORKLIFT kind is part of the people schema so a forklift intrusion can be injected the same way as a worker, with the same zone-blocking and LiDAR behaviour.",
+  rows: () => STATIC_PEOPLE.filter((p) => p.kind === "FORKLIFT"),
+  fields: F_PERSON,
+  characteristics: [
+    { label: "Body L × W × H", value: `${FORKLIFT_BODY.L} × ${FORKLIFT_BODY.W} × ${FORKLIFT_BODY.H}`, unit: "m", source: "People.FORKLIFT_BODY" },
+    { label: "Mast height", value: FORKLIFT_BODY.MAST_H, unit: "m", source: "People.FORKLIFT_BODY.MAST_H" },
+    { label: "Driven by the simulation", value: "no (decorative placement only)", source: "scene/People.tsx" },
+    { label: "LiDAR classification when present as a person", value: "HUMAN", source: "engine.perceive" },
+    { label: "Robot stops when it is ahead within", value: SIM.PERC_STOP, unit: "m", source: "SIM.PERC_STOP" },
+    { label: "Robot slows when it is ahead within", value: SIM.PERC_SLOW, unit: "m", source: "SIM.PERC_SLOW" },
+  ],
+  columns: personCols,
+  variants: [{ label: "floor", key: (p) => p.floor ?? 1 }],
+});
+
+export const ASSET_TYPES: readonly CatalogEntry[] = [rack, robot, conveyor, station, charging, lift, camera, sensor, dock, worker, forklift];

@@ -1,4 +1,4 @@
-"""SQLite persistence layer for events / KPI (first version; to move to PostgreSQL, change only this file)."""
+"""SQLite persistence layer for events / KPI / scenario workspace documents (first version; to move to PostgreSQL, change only this file)."""
 from __future__ import annotations
 
 import json
@@ -21,6 +21,9 @@ class TwinDB:
             CREATE INDEX IF NOT EXISTS ix_events_run_tick ON events(run_id, tick);
             CREATE TABLE IF NOT EXISTS kpi_snapshots (run_id TEXT, tick INTEGER, kpi TEXT, PRIMARY KEY(run_id, tick));
             CREATE TABLE IF NOT EXISTS decisions (run_id TEXT, id TEXT, tick INTEGER, decision TEXT, PRIMARY KEY(run_id, id));
+            CREATE TABLE IF NOT EXISTS scenarios (
+              id TEXT PRIMARY KEY, name TEXT NOT NULL, size TEXT NOT NULL, instances TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+            );
             """
         )
 
@@ -67,6 +70,32 @@ class TwinDB:
                 d["payload"] = json.loads(d["payload"])
             out.append(d)
         return out
+
+    # ── Scenario workspace documents (setup editor): size and instances are stored as JSON text ──
+    SCENARIO_COLS = ("id", "name", "size", "instances", "created_at", "updated_at")
+
+    def list_scenarios(self) -> list[dict[str, Any]]:
+        """Summaries without the instances, newest `updated_at` first; `instance_count` comes from the stored JSON array."""
+        rows = self.conn.execute("SELECT id,name,size,json_array_length(instances),created_at,updated_at FROM scenarios ORDER BY updated_at DESC, id").fetchall()
+        return [{"id": i, "name": n, "size": json.loads(sz), "instance_count": cnt, "created_at": ca, "updated_at": ua} for i, n, sz, cnt, ca, ua in rows]
+
+    def get_scenario(self, sid: str) -> dict[str, Any] | None:
+        row = self.conn.execute("SELECT id,name,size,instances,created_at,updated_at FROM scenarios WHERE id=?", (sid,)).fetchone()
+        if row is None:
+            return None
+        d = dict(zip(self.SCENARIO_COLS, row))
+        d["size"] = json.loads(d["size"]); d["instances"] = json.loads(d["instances"])
+        return d
+
+    def upsert_scenario(self, doc: dict[str, Any]) -> None:
+        self.conn.execute("INSERT OR REPLACE INTO scenarios(id,name,size,instances,created_at,updated_at) VALUES(?,?,?,?,?,?)",
+                          (doc["id"], doc["name"], json.dumps(doc["size"]), json.dumps(doc["instances"]), doc["created_at"], doc["updated_at"]))
+        self.conn.commit()
+
+    def delete_scenario(self, sid: str) -> bool:
+        cur = self.conn.execute("DELETE FROM scenarios WHERE id=?", (sid,))
+        self.conn.commit()
+        return cur.rowcount > 0
 
     def close(self) -> None:
         self.conn.close()

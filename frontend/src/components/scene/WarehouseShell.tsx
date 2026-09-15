@@ -3,10 +3,9 @@ import * as THREE from "three";
 import { layout } from "../../state/store";
 import type { LayoutDock } from "../../layout/types";
 
-/** Floor, outer walls, pillars, roof trusses, dock doors, light fixtures */
-export function WarehouseShell({ lite = false }: { lite?: boolean }) {
-  const { width: W, depth: D, height: H } = layout.size;
-  const floorTex = useMemo(() => {
+/** Procedural concrete floor texture (noise + a 1 m grid, repeating every 8 m) sized for a W × D floor; shared with the scenario workspace editor */
+export function useFloorTexture(W: number, D: number) {
+  return useMemo(() => {
     const c = document.createElement("canvas"); c.width = c.height = 512;
     const g = c.getContext("2d")!;
     g.fillStyle = "#1b2230"; g.fillRect(0, 0, 512, 512);
@@ -18,6 +17,12 @@ export function WarehouseShell({ lite = false }: { lite?: boolean }) {
     const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(W / 8, D / 8); t.anisotropy = 8; t.colorSpace = THREE.SRGBColorSpace;
     return t;
   }, [W, D]);
+}
+
+/** Floor, outer walls, pillars, roof trusses, dock doors, light fixtures */
+export function WarehouseShell({ lite = false }: { lite?: boolean }) {
+  const { width: W, depth: D, height: H } = layout.size;
+  const floorTex = useFloorTexture(W, D);
 
   // round-9d: pillar positions are no longer procedural (the old version grew pillars on the conveyors and the central aisle, and the navigation grid did not know).
   // Single source of truth = layout.obstacles (kind PILLAR). The F1 grid uses the same data to block cells -- visuals and paths always agree.

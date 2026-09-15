@@ -5,7 +5,7 @@ Digital Twin Warehouse — backend (Phase 3)
 
 Start: uvicorn app.main:app --reload --port 8000
 WebSocket: ws://localhost:8000/ws
-REST: /api/health /api/state /api/events /api/kpi /api/layout /api/inject /api/tasks
+REST: /api/health /api/state /api/events /api/kpi /api/layout /api/inject /api/tasks /api/scenarios
 """
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ import os
 import time
 import uuid
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
@@ -32,8 +33,8 @@ from .ai import copilot as copilot_ai
 from .ai import vlm as vlm_ai
 from .db import TwinDB
 from .guard import MAX_BODY_BYTES, MAX_WS_MESSAGE_BYTES, client_key, limiter, origin_allowed
-from .schema import (ClearInjectionBody, ClientMessage, CopilotBody, NewTask, ScenarioInjection, SimControlBody, TwinState,
-                     VlmObserveBody, WhatIfRequest)
+from .schema import (ClearInjectionBody, ClientMessage, CopilotBody, NewScenarioBody, NewTask, Scenario, ScenarioBody, ScenarioInjection,
+                     SimControlBody, TwinState, VlmObserveBody, WhatIfRequest)
 from .sim.engine import SimEngine, SIM
 from .sim.whatif import run_whatif
 from .sim.navgrid import load_layout
@@ -498,6 +499,55 @@ async def post_task(body: NewTask, request: Request) -> dict[str, Any]:
         return server.engine.create_task(body.type, body.priority, body.source, body.destination, body.load_units)
     except ValueError as e:
         raise HTTPException(400, str(e))
+
+
+# ── Scenario workspace (setup editor): documents persisted in SQLite; the frontend auto-saves with PUT.
+#    Plain `def` handlers: the SQLite calls run in the threadpool and never stall the simulation loop. Like every other endpoint
+#    there is no authentication — anyone who can reach the API can read, overwrite or delete any scenario. ──
+def _iso_now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+
+
+@app.get("/api/scenarios")
+def list_scenarios() -> list[dict[str, Any]]:
+    """Summaries (no instances) newest first."""
+    return server.db.list_scenarios()
+
+
+@app.post("/api/scenarios", status_code=201)
+def create_scenario(body: NewScenarioBody, request: Request) -> dict[str, Any]:
+    throttle(request, "mutate")
+    now = _iso_now()
+    doc = Scenario(id="sc-" + uuid.uuid4().hex[:12], name=body.name, size=body.size, instances=[], created_at=now, updated_at=now).model_dump()
+    server.db.upsert_scenario(doc)
+    return doc
+
+
+@app.get("/api/scenarios/{sid}")
+def get_scenario(sid: str) -> dict[str, Any]:
+    doc = server.db.get_scenario(sid)
+    if doc is None:
+        raise HTTPException(404, "scenario not found")
+    return doc
+
+
+@app.put("/api/scenarios/{sid}")
+def put_scenario(sid: str, body: ScenarioBody, request: Request) -> dict[str, Any]:
+    """Replaces name, size and instances (last write wins). Own rate-limit bucket: the debounced workspace auto-save must not consume the mutate budget."""
+    throttle(request, "scenario")
+    cur = server.db.get_scenario(sid)
+    if cur is None:
+        raise HTTPException(404, "scenario not found")
+    doc = Scenario(id=sid, created_at=cur["created_at"], updated_at=_iso_now(), **body.model_dump()).model_dump()
+    server.db.upsert_scenario(doc)
+    return doc
+
+
+@app.delete("/api/scenarios/{sid}", status_code=204)
+def delete_scenario(sid: str, request: Request) -> None:
+    throttle(request, "mutate")
+    if not server.db.delete_scenario(sid):
+        raise HTTPException(404, "scenario not found")
 
 
 @app.post("/api/copilot")

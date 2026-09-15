@@ -14,7 +14,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Annotated, Any, Literal, Optional, Union
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # ─────────────────────────────────────────────────────────────
 # Base types
@@ -734,6 +734,58 @@ ClientMessage = Annotated[
           CmdAckAlert, CmdSelectRobot, CmdWhatIfRun, CmdCopilotAsk],
     Field(discriminator="type"),
 ]
+
+
+# ─────────────────────────────────────────────────────────────
+# Scenario workspace (setup editor): a warehouse box plus the asset instances placed in it, persisted in SQLite.
+# Mirrors frontend/src/scenario/types.ts. Coordinates in metres: length → x, width → z, height → y; rotation = yaw (rad) around y.
+# ─────────────────────────────────────────────────────────────
+
+ASSET_TYPE_IDS = ("rack", "robot", "conveyor", "station", "charging", "lift", "camera", "sensor", "dock", "worker", "forklift")
+AssetTypeId = Literal["rack", "robot", "conveyor", "station", "charging", "lift", "camera", "sensor", "dock", "worker", "forklift"]
+Finite = Annotated[float, Field(allow_inf_nan=False)]
+ParamValue = Union[bool, Finite, str]
+
+
+class ScenarioSize(_Base):
+    length: Finite = Field(ge=5, le=500)
+    width: Finite = Field(ge=5, le=500)
+    height: Finite = Field(ge=3, le=40)
+
+
+class AssetInstance(_Base):
+    id: str = Field(min_length=1, max_length=40)
+    type: AssetTypeId
+    position: tuple[Finite, Finite, Finite]
+    rotation: Finite
+    params: dict[Annotated[str, Field(min_length=1, max_length=40)], ParamValue] = Field(default_factory=dict, max_length=32)
+
+    @field_validator("params")
+    @classmethod
+    def _short_strings(cls, v: dict[str, Any]) -> dict[str, Any]:
+        for k, x in v.items():
+            if isinstance(x, str) and len(x) > 200:
+                raise ValueError(f"params.{k}: string longer than 200 characters")
+        return v
+
+
+class ScenarioBody(_Base):
+    """PUT /api/scenarios/{id}: the client replaces name, size and instances (last write wins)."""
+    name: str = Field(min_length=1, max_length=80)
+    size: ScenarioSize
+    instances: list[AssetInstance] = Field(default_factory=list, max_length=2000)
+
+
+class NewScenarioBody(_Base):
+    """POST /api/scenarios"""
+    name: str = Field(min_length=1, max_length=80)
+    size: ScenarioSize
+
+
+class Scenario(ScenarioBody):
+    id: str
+    created_at: str
+    updated_at: str
 
 
 # ─────────────────────────────────────────────────────────────

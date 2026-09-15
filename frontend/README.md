@@ -93,6 +93,31 @@ The default is Medium. If the FPS is less than 30, first change to Low (the TopB
 - ROS 2 / Webots: The backend `SimEngine.step()` is the only point that moves the simulation forward. Change `robots[id].position/heading` to read from a ROS topic, and change `path` to send a nav goal. Nothing else changes (tasks, KPI, events, and AI). The `TwinState` contract does not change, and the frontend needs no modification.
 - Known limits: The robots have only grid cell avoidance. There is no true multi-robot cooperative planning (CBS). Idle robots that return to the parking area can wait for each other for a short time. The Live Camera panel is a second WebGL context. On a low-performance GPU, consider a change to a RenderTarget texture.
 
+## Scenario setup and workspace editor
+
+A second workflow next to the operations console: build a warehouse of your own size from the asset catalog. Nothing in the live simulation,
+the engine, the WebSocket protocol or the console changes; the console only gains a **Setup** button in the top bar.
+
+- **Routes** (hash router in `src/router.ts`, no dependency): `#/` console (default), `#/scenarios` list, `#/workspace/<id>` editor. A reload keeps the page; an unknown id redirects to the list.
+- **Scenarios page**: the saved scenarios from `GET /api/scenarios` (name, L × W × H, asset count, last update) with **Open** / **Delete**, and **New Scenario**
+  (name + Length / Width / Height in metres; Length and Width 5–500, Height 3–40; the same bounds the backend enforces). Creating posts to the backend and opens the workspace.
+  When the backend is unreachable the page shows an error state with **Retry**.
+- **Workspace**: left = all 11 catalog asset types (`src/scenario/assetDefs.tsx` maps each one onto the procedural 3D model the console already uses);
+  centre = **3D VIEW** / **2D VIEW**; right = inspector for the selected instance (id, x / z, y for cameras, rotation in degrees, type-specific parameters, Delete).
+  Drag a type from the list into the 3D view: a translucent ghost of its footprint follows the surface under the pointer and the drop creates the instance there
+  (click or Enter on a row adds one at the warehouse centre instead).
+- **Surfaces**: every instance except a camera sits on a surface — the floor, or the top of a rack / conveyor (an invisible cap at its height is the raycast target),
+  so a sensor dropped on a rack lands at the rack height and returns to y = 0 when dragged off. Cameras keep an editable mount height and move on that plane.
+- **Move / rotate / delete**: drag an instance in the 3D view (snapping, clamped to the box), rotate with the yaw ring, **Q** / **E** (15°, Shift: 90°) or the inspector field;
+  **Delete** / **Backspace** removes, **Esc** deselects. The 2D view draws every footprint rotated (dashed when it sits above the floor), a camera FOV wedge, and selects on click; selection is shared with 3D.
+- **Coordinates**: Length → x, Width → z, Height → y (the `warehouse_layout.json` mapping); rotation is the yaw in radians rendered with three.js `rotation-y`, which the 2D view draws as `rotate(−θ)`.
+- **Auto-save**: every change is saved to the backend after 800 ms of inactivity (`PUT /api/scenarios/{id}`, its own 120/min rate-limit bucket); the header shows **Saved / Saving… / Save failed — retry**;
+  a route change or page unload flushes a pending save, and a failed save is kept and retried on the next change, on **retry**, or when the page is opened again.
+  Scenarios are shared, unauthenticated documents (like the rest of the API); two browsers editing the same scenario overwrite each other (last write wins).
+- **Non-goals**: running the simulation on a scenario, exporting to `warehouse_layout.json`, offline editing, zones / walkways / parking, undo, multi-select, drag-moving in 2D.
+
+Code: `src/scenario/` (types, pure model helpers, REST client, zustand store, asset definitions) and `src/components/scenario/`; tests in `tests/scenario.test.ts`.
+
 ## Deployment
 
 The frontend is a set of static files. The backend is a long-running WebSocket service (you cannot use serverless).

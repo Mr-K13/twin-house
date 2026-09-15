@@ -1,13 +1,13 @@
 /**
  * Catalog 3D preview: one small orbiting <Canvas> that draws a single instance of the selected asset type with the same
  * procedural models as the main scene (RackInstances, RobotMesh, Conveyor, StationModel, ChargerModel, Lift, CameraModel,
- * SensorModel, DockModel). The instance is re-centred at the origin and the camera distance comes from the per-type PREVIEWS config.
+ * SensorModel, DockModel, Worker, Forklift). The instance is re-centred at the origin and the camera distance comes from the per-type PREVIEWS config.
  */
 import { useEffect } from "react";
 import { Canvas, useThree } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import type { LayoutRack, LayoutSpawnRobot, LayoutConveyor, LayoutStation, LayoutCharging, LayoutLift, LayoutCamera, LayoutSensor, LayoutDock } from "../../layout/types";
-import type { RobotState } from "../../schema/twin_state";
+import type { RobotState, PersonState } from "../../schema/twin_state";
 import { SIM, ROBOT_DEFAULTS } from "../../simulation/engine";
 import { RackInstances } from "../scene/RackInstances";
 import { RobotMesh } from "../scene/Robots";
@@ -15,14 +15,15 @@ import { Conveyor, StationModel, ChargerModel, SensorModel } from "../scene/Fixt
 import { Lift, FLOOR_ELEV } from "../scene/Mezzanine";
 import { CameraModel } from "../scene/Cameras";
 import { DockModel } from "../scene/WarehouseShell";
+import { Worker, Forklift } from "../scene/People";
 
 /** How to frame one instance: the world point to centre on, the camera distance, the orbit target height, and the model */
 interface PreviewDef<T> { center: (o: T) => [number, number, number]; dist: (o: T) => number; lookY?: (o: T) => number; render: (o: T) => JSX.Element }
 const def = <T,>(d: PreviewDef<T>): PreviewDef<never> => d;
 
-/** A robot at the origin, idle, using the engine's spawn defaults (RobotMesh needs a full RobotState) */
-const robotState = (sp: LayoutSpawnRobot): RobotState => ({
-  id: sp.id, model: ROBOT_DEFAULTS.model, floor: 1, lift_id: null, lift_stage: null, position: [0, 0, 0], heading: 0.6, velocity: 0, max_speed: SIM.MAX_SPEED,
+/** A robot at the origin, idle, using the engine's spawn defaults (RobotMesh needs a full RobotState); the workspace editor passes heading 0 and lets its group rotate */
+export const robotState = (sp: LayoutSpawnRobot, heading = 0.6): RobotState => ({
+  id: sp.id, model: ROBOT_DEFAULTS.model, floor: 1, lift_id: null, lift_stage: null, position: [0, 0, 0], heading, velocity: 0, max_speed: SIM.MAX_SPEED,
   battery: sp.battery, status: "IDLE", fsm: "IDLE", health: 100, current_task_id: null, destination: null, path: [], path_index: 0,
   load: { current: 0, capacity: ROBOT_DEFAULTS.load_capacity }, zone: null, eta_s: null, fsm_since_tick: 0,
   stats: { distance_m: 0, tasks_completed: 0, energy_wh: 0, busy_ticks: 0, wait_ticks: 0 }, perception: { state: "CLEAR", ahead_m: SIM.LIDAR_RANGE, nearest_m: null, obstacles: [] },
@@ -38,6 +39,8 @@ export const PREVIEWS: Record<string, PreviewDef<never>> = {
   lift: def<LayoutLift>({ center: (l) => [l.cell[0] + 0.5, 0, l.cell[1] + 0.5], dist: () => (FLOOR_ELEV[2] ?? 8) * 1.7 + 4, lookY: () => ((FLOOR_ELEV[2] ?? 8) + 2.4) / 2, render: (l) => <Lift l={l} elev={FLOOR_ELEV[2] ?? 8} lite /> }),
   camera: def<LayoutCamera>({ center: (c) => [c.position[0], c.position[1], c.position[2]], dist: () => 7, lookY: () => -1.6, render: (c) => <CameraModel c={c} active /> }),
   sensor: def<LayoutSensor>({ center: (s) => [s.position[0], s.position[1], s.position[2]], dist: () => 2.2, lookY: () => 0, render: (s) => <SensorModel s={s} /> }),
+  worker: def<PersonState>({ center: (p) => [p.position[0], 0, p.position[2]], dist: () => 4.2, lookY: () => 0.9, render: (p) => <Worker position={p.position} heading={p.heading} alert /> }),
+  forklift: def<PersonState>({ center: (p) => [p.position[0], 0, p.position[2]], dist: () => 6.5, lookY: () => 0.9, render: (p) => <Forklift position={p.position} heading={p.heading} /> }),
   dock: def<LayoutDock>({ center: (d) => [d.door[0], 0, -2], dist: () => 16, lookY: () => 2, render: (d) => <DockModel d={d} /> }),
 };
 

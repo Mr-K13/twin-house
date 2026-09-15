@@ -23,7 +23,7 @@ Environment variables: `TWIN_SEED` (the default is 42) and `TWIN_DB` (the defaul
 
 ```bash
 pip install -r requirements-dev.txt
-python -m pytest -q          # 32 tests: bit-level PRNG agreement with JS, A*, a 20-minute stress test, determinism, low battery, human intrusion, perception, the REST and WebSocket protocol, AI, What-if, and the protection layer (rate limit / Origin / body limit / task locations)
+python -m pytest -q          # 53 tests: bit-level PRNG agreement with JS, A*, a 20-minute stress test, determinism, low battery, human intrusion, perception, the REST and WebSocket protocol, AI, What-if, the protection layer (rate limit / Origin / body limit / task locations), and the scenario documents REST contract
 ```
 
 ## AI (Phase 5)
@@ -52,6 +52,11 @@ Run `cp .env.example .env` and add `OPENAI_API_KEY` (the backend reads .env auto
 | `POST /api/vlm/observe` | `{"camera_id": "CAM-B01", "image_b64": "data:image/jpeg;base64,..."}` → VlmObservation (if image_b64 is absent, the result is simulated) |
 | `GET /api/ai/status` | Whether the LLM is on, the model name, and vlm_acts |
 | `POST /api/sim` | `{"action":"PLAY"|"PAUSE"|"RESET","speed":1|2|5|10}` |
+| `GET /api/scenarios` | Scenario workspace documents (the frontend's Setup pages): summaries without `instances`, newest `updated_at` first, each with `instance_count` |
+| `POST /api/scenarios` | `{"name", "size": {"length", "width", "height"}}` (metres; 5–500 / 5–500 / 3–40) → `201` with the full document: server id `sc-<12 hex>`, empty `instances`, timestamps |
+| `GET /api/scenarios/{id}` | Full document `{id, name, size, instances[], created_at, updated_at}`, or `404` |
+| `PUT /api/scenarios/{id}` | Replaces `name`, `size` and `instances` (≤ 2000 of `{id, type, position, rotation, params}`; `type` is one of the 11 catalog ids) and sets `updated_at`; last write wins. Uses its own `scenario` rate-limit bucket (120/min) so the workspace's debounced auto-save never trips the 20/min mutate limit |
+| `DELETE /api/scenarios/{id}` | `204`, or `404`. Scenarios are shared documents without authentication (like every other endpoint): anyone who can reach the API can read, overwrite or delete them |
 
 ## PATCH protocol
 
@@ -77,7 +82,7 @@ The Python engine takes 0.3 ms/tick (20 robots, a 7,000-cell A*). A speed of 10x
 
 ```
 app/main.py          FastAPI, WebSocket, simulation loop, diff
-app/db.py            SQLite (events / kpi_snapshots / decisions)
+app/db.py            SQLite (events / kpi_snapshots / decisions / scenarios)
 app/schema.py        Pydantic contract (= docs/schema/twin_state.py)
 app/sim/astar.py     A*
 app/sim/navgrid.py   layout -> navigation grid
