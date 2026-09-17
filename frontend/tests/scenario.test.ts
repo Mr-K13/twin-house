@@ -1,10 +1,17 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { isValidElement } from "react";
 import { ASSET_TYPES } from "../src/catalog/assetTypes";
 import { ASSET_DEFS, ASSET_TYPE_IDS } from "../src/scenario/assetDefs";
-import { SIZE_LIMITS, validateSize, nextInstanceId, clampToWarehouse, wrapRotation, rotateBy, makeInstance, placeOnSurface, footprintCorners, createSaveScheduler, type SchedulerTimer } from "../src/scenario/model";
+import { SIZE_LIMITS, validateSize, nextInstanceId, constrainToWalls, footprintHalfExtents, WALL_SNAP_DISTANCE, wrapRotation, rotateBy, snapToCardinal, yawFromQuaternion, CARDINAL_SNAP_TOLERANCE, makeInstance, placeOnSurface, footprintCorners, createSaveScheduler, type SchedulerTimer } from "../src/scenario/model";
 import { parseRoute, routeHash } from "../src/router";
+import { useScenarioStore } from "../src/scenario/store";
 import type { AssetInstance, AssetTypeId, Scenario } from "../src/scenario/types";
+
+// The REST client derives its base URL from `location` at load time (src/services/ws.ts), which node does not have; the store tests never save
+vi.mock("../src/scenario/api", () => ({
+  ApiError: class ApiError extends Error { constructor(public status: number, message: string) { super(message); } },
+  listScenarios: vi.fn(), getScenario: vi.fn(), createScenario: vi.fn(), putScenario: vi.fn(), deleteScenario: vi.fn(),
+}));
 
 const SIZE = { length: 60, width: 40, height: 10 };
 const inst = (id: string, type: AssetTypeId = "rack"): AssetInstance => ({ id, type, position: [0, 0, 0], rotation: 0, params: {} });
@@ -33,10 +40,32 @@ describe("instance ids", () => {
 });
 
 describe("placement", () => {
-  it("clamps every axis to the warehouse box", () => {
-    expect(clampToWarehouse([-1, -2, -3], SIZE)).toEqual([0, 0, 0]);
-    expect(clampToWarehouse([61, 11, 41], SIZE)).toEqual([60, 10, 40]);
-    expect(clampToWarehouse([12.5, 6, 7.25], SIZE)).toEqual([12.5, 6, 7.25]);
+  // default rack: 8 m long (x) × 1.2 m deep (z) → half extents 4 / 0.6 at rotation 0
+  const rack = (position: [number, number, number], rotation = 0): AssetInstance => ({ ...makeInstance("rack", position, []), rotation });
+  it("footprintHalfExtents follows the rotation", () => {
+    expect(footprintHalfExtents(ASSET_DEFS.rack, ASSET_DEFS.rack.defaults, 0)).toEqual({ hx: 4, hz: 0.6 });
+    const q = footprintHalfExtents(ASSET_DEFS.rack, ASSET_DEFS.rack.defaults, Math.PI / 2);
+    expect(q.hx).toBeCloseTo(0.6); expect(q.hz).toBeCloseTo(4);
+    const d = footprintHalfExtents(ASSET_DEFS.rack, ASSET_DEFS.rack.defaults, Math.PI / 4);
+    expect(d.hx).toBeCloseTo((8 + 1.2) / 2 * Math.SQRT1_2); expect(d.hz).toBeCloseTo(d.hx);
+  });
+  it("constrainToWalls keeps the whole footprint between the walls, not just the centre", () => {
+    expect(constrainToWalls(rack([-1, -2, -3]), SIZE).position).toEqual([4, 0, 0.6]);
+    expect(constrainToWalls(rack([61, 11, 41]), SIZE).position).toEqual([56, 10, 39.4]);
+    expect(constrainToWalls(rack([1, 0, 1], Math.PI / 2), SIZE).position).toEqual([1, 0, 4]);   // turned 90°: the long side now runs along z
+    const same = rack([12.5, 0, 7.25]);
+    expect(constrainToWalls(same, SIZE)).toBe(same);                                           // nothing to do: the very same object
+    expect(constrainToWalls(rack([1, 0, 1]), { length: 6, width: 5, height: 10 }).position).toEqual([3, 0, 1]);   // an 8 m rack in a 6 m hall is centred on x
+  });
+  it("constrainToWalls with snap pulls an edge flush against a wall within the distance and leaves farther ones alone", () => {
+    const snap = WALL_SNAP_DISTANCE;
+    expect(snap).toBe(0.5);
+    expect(constrainToWalls(rack([4.4, 0, 20]), SIZE, snap).position).toEqual([4, 0, 20]);       // left edge 0.4 m from x = 0
+    expect(constrainToWalls(rack([4.6, 0, 20]), SIZE, snap).position).toEqual([4.6, 0, 20]);     // 0.6 m: free
+    expect(constrainToWalls(rack([55.7, 0, 20]), SIZE, snap).position).toEqual([56, 0, 20]);     // right edge 0.3 m from x = 60
+    expect(constrainToWalls(rack([20, 0, 1]), SIZE, snap).position).toEqual([20, 0, 0.6]);       // front edge 0.4 m from z = 0
+    expect(constrainToWalls(rack([55.8, 0, 39.1]), SIZE, snap).position).toEqual([56, 0, 39.4]); // both axes: into the corner
+    expect(constrainToWalls(rack([4.4, 0, 20]), SIZE).position).toEqual([4.4, 0, 20]);           // no snap requested (inspector, rotation)
   });
   it("makeInstance clones the defaults, starts at rotation 0 and lifts cameras to their mount height", () => {
     const r = makeInstance("rack", [10, 0, 5], []);
@@ -49,7 +78,10 @@ describe("placement", () => {
   it("placeOnSurface snaps to the hit point, keeps the camera mount height, and clamps to the warehouse", () => {
     expect(placeOnSurface("sensor", [20, 6, 10], SIZE, []).position).toEqual([20, 6, 10]);
     expect(placeOnSurface("camera", [20, 0, 10], SIZE, []).position).toEqual([20, 5, 10]);
-    expect(placeOnSurface("robot", [-5, 0, 45], SIZE, []).position).toEqual([0, 0, 40]);
+    const { w, d } = ASSET_DEFS.robot.footprint(ASSET_DEFS.robot.defaults);
+    expect(placeOnSurface("robot", [-5, 0, 45], SIZE, []).position).toEqual([w / 2, 0, 40 - d / 2]);                 // flush against the near corner
+    expect(placeOnSurface("rack", [4.3, 0, 20.4], SIZE, []).position).toEqual([4, 0, 20.4]);                          // a drop 0.3 m from the wall snaps flush
+    expect(placeOnSurface("rack", [30.123456, 0, 20.4], SIZE, []).position).toEqual([30.123, 0, 20.4]);              // mm rounding
     expect(placeOnSurface("camera", [1, 0, 1], { ...SIZE, height: 4 }, []).position[1]).toBe(4);
     const second = placeOnSurface("rack", [1, 0, 1], SIZE, [inst("RACK-01")]);
     expect(second.id).toBe("RACK-02");
@@ -64,6 +96,25 @@ describe("rotation", () => {
     expect(wrapRotation(5 * Math.PI)).toBeCloseTo(Math.PI);
     expect(rotateBy(0, -(15 * Math.PI) / 180)).toBeCloseTo((345 * Math.PI) / 180);
     expect(rotateBy((350 * Math.PI) / 180, (15 * Math.PI) / 180)).toBeCloseTo((5 * Math.PI) / 180);
+  });
+  const deg = (d: number) => (d * Math.PI) / 180;
+  it("snapToCardinal is magnetic around 0 / 90 / 180 / 270° and leaves other angles alone", () => {
+    expect(CARDINAL_SNAP_TOLERANCE).toBeCloseTo(deg(7.5));
+    expect(snapToCardinal(deg(4))).toBe(0);
+    expect(snapToCardinal(deg(-5))).toBe(0);                          // just below 0 wraps to 0, not 360
+    expect(snapToCardinal(deg(86))).toBeCloseTo(deg(90));
+    expect(snapToCardinal(deg(184))).toBeCloseTo(deg(180));
+    expect(snapToCardinal(deg(265))).toBeCloseTo(deg(270));
+    expect(snapToCardinal(deg(357))).toBe(0);                         // 360° is 0°
+    expect(snapToCardinal(deg(45))).toBeCloseTo(deg(45));            // free rotation between the cardinals
+    expect(snapToCardinal(deg(100))).toBeCloseTo(deg(100));
+    expect(snapToCardinal(deg(98), deg(10))).toBeCloseTo(deg(90));   // custom tolerance
+  });
+  it("yawFromQuaternion recovers yaws beyond ±90°, where Euler .y would not", () => {
+    for (const d of [0, 30, 90, 120, 179, 200, 270, 300, 359]) {
+      const half = deg(d) / 2;
+      expect(wrapRotation(yawFromQuaternion(0, Math.sin(half), 0, Math.cos(half)))).toBeCloseTo(wrapRotation(deg(d)), 6);
+    }
   });
 });
 
@@ -141,6 +192,41 @@ describe("save scheduler", () => {
     const t = fakeTimer(); const s = createSaveScheduler<Scenario>(async () => {}, 800, t.timer);
     s.schedule(doc(1)); s.cancel();
     expect(s.pending()).toBe(false); expect(t.armed()).toBe(0);
+  });
+});
+
+describe("scenario store", () => {
+  const scenario = (instances: AssetInstance[]): Scenario => ({ id: "sc-1", name: "t", size: SIZE, instances, created_at: "", updated_at: "" });
+  const rack = (position: [number, number, number], rotation = 0): AssetInstance => ({ ...makeInstance("rack", position, []), rotation });
+  const withStore = (instances: AssetInstance[], run: () => void) => {
+    vi.useFakeTimers();                                   // the debounced PUT never fires
+    try { useScenarioStore.setState({ active: scenario(instances), selectedId: null }); run(); }
+    finally { useScenarioStore.setState({ active: null }); vi.useRealTimers(); }
+  };
+  const pos = (id: string) => useScenarioStore.getState().active!.instances.find((i) => i.id === id)!.position;
+  it("moveInstance keeps the footprint inside and snaps to a nearby wall; updateInstance only clamps", () => {
+    withStore([rack([20, 0, 20])], () => {
+      const st = useScenarioStore.getState();
+      st.moveInstance("RACK-01", [-3, 0, 0.9]);
+      expect(pos("RACK-01")).toEqual([4, 0, 0.6]);      // pushed back in on x, snapped flush on z (edge 0.3 m from z = 0)
+      st.moveInstance("RACK-01", [4.45, 0, 20.123456]);
+      expect(pos("RACK-01")).toEqual([4, 0, 20.123]);   // magnetic wall on x, mm rounding on z
+      st.updateInstance("RACK-01", { position: [4.45, 0, 20] });
+      expect(pos("RACK-01")).toEqual([4.45, 0, 20]);    // a typed value is not snapped
+      st.updateInstance("RACK-01", { position: [1, 0, 20] });
+      expect(pos("RACK-01")).toEqual([4, 0, 20]);       // but never leaves the walls
+    });
+  });
+  it("a rotation or a longer footprint pushes the instance back inside the walls", () => {
+    withStore([rack([4, 0, 1])], () => {
+      const st = useScenarioStore.getState();
+      st.updateInstance("RACK-01", { rotation: Math.PI / 2 });
+      expect(pos("RACK-01")).toEqual([4, 0, 4]);        // the 8 m side now runs along z
+      st.updateInstance("RACK-01", { rotation: 0, params: { ...ASSET_DEFS.rack.defaults, length: 20 } });
+      expect(pos("RACK-01")).toEqual([10, 0, 4]);       // half of 20 m from x = 0
+      st.addInstance({ ...rack([0, 0, 0]), id: "RACK-02" });
+      expect(pos("RACK-02")).toEqual([4, 0, 0.6]);      // added instances are constrained too
+    });
   });
 });
 

@@ -11,7 +11,7 @@ import { create } from "zustand";
 import type { P3 } from "../layout/types";
 import type { AssetInstance, AssetTypeId, Scenario, ScenarioSize, ScenarioSummary } from "./types";
 import { ApiError, createScenario, deleteScenario, getScenario, listScenarios, putScenario } from "./api";
-import { clampToWarehouse, createSaveScheduler, roundMm, type SaveOptions } from "./model";
+import { constrainToWalls, createSaveScheduler, roundMm, WALL_SNAP_DISTANCE, type SaveOptions } from "./model";
 
 export type SaveState = "saved" | "saving" | "error";
 export type WorkspaceTab = "3D" | "2D";
@@ -38,9 +38,11 @@ interface ScenarioStore {
   /** Save a pending document now (page unload passes keepalive) */
   flushSave(opts?: SaveOptions): Promise<void>;
   retrySave(): void;
+  /** Adds with the footprint kept between the walls */
   addInstance(inst: AssetInstance): void;
+  /** Merges the patch; whatever changed (position, rotation, footprint parameters), the footprint is kept between the walls */
   updateInstance(id: string, patch: Partial<AssetInstance>): void;
-  /** updateInstance with the position clamped to the warehouse */
+  /** Pointer move: updateInstance with the position plus magnetic walls (WALL_SNAP_DISTANCE) */
   moveInstance(id: string, position: P3): void;
   removeInstance(id: string): void;
   renameScenario(name: string): void;
@@ -76,6 +78,11 @@ export const useScenarioStore = create<ScenarioStore>((set, get) => {
     const next = fn(a);
     set({ active: next, saveState: "saving" });
     scheduler.schedule(next);
+  };
+  /** Every instance write ends here: footprint between the walls (magnetic when `snap` > 0) and a mm-rounded position */
+  const settle = (inst: AssetInstance, size: ScenarioSize, snap = 0): AssetInstance => {
+    const c = constrainToWalls(inst, size, snap);
+    return { ...c, position: roundMm(c.position) };
   };
 
   return {
@@ -125,14 +132,13 @@ export const useScenarioStore = create<ScenarioStore>((set, get) => {
       scheduler.schedule(a);
       void flushQuietly();
     },
-    addInstance(inst) { mutate((a) => ({ ...a, instances: [...a.instances, inst] })); },
+    addInstance(inst) { mutate((a) => ({ ...a, instances: [...a.instances, settle(inst, a.size)] })); },
     updateInstance(id, patch) {
-      mutate((a) => ({ ...a, instances: a.instances.map((i) => (i.id === id ? { ...i, ...patch } : i)) }));
+      mutate((a) => ({ ...a, instances: a.instances.map((i) => (i.id === id ? settle({ ...i, ...patch }, a.size) : i)) }));
       if (patch.id && patch.id !== id && get().selectedId === id) set({ selectedId: patch.id });
     },
     moveInstance(id, position) {
-      const a = get().active; if (!a) return;
-      get().updateInstance(id, { position: roundMm(clampToWarehouse(position, a.size)) });
+      mutate((a) => ({ ...a, instances: a.instances.map((i) => (i.id === id ? settle({ ...i, position }, a.size, WALL_SNAP_DISTANCE) : i)) }));
     },
     removeInstance(id) {
       mutate((a) => ({ ...a, instances: a.instances.filter((i) => i.id !== id) }));

@@ -93,13 +93,14 @@ The default is Medium. If the FPS is less than 30, first change to Low (the TopB
 - ROS 2 / Webots: The backend `SimEngine.step()` is the only point that moves the simulation forward. Change `robots[id].position/heading` to read from a ROS topic, and change `path` to send a nav goal. Nothing else changes (tasks, KPI, events, and AI). The `TwinState` contract does not change, and the frontend needs no modification.
 - Known limits: The robots have only grid cell avoidance. There is no true multi-robot cooperative planning (CBS). Idle robots that return to the parking area can wait for each other for a short time. The Live Camera panel is a second WebGL context. On a low-performance GPU, consider a change to a RenderTarget texture.
 
-## Scenario setup and workspace editor
+## Twin setup and workspace editor
 
-A second workflow next to the operations console: build a warehouse of your own size from the asset catalog. Nothing in the live simulation,
+A second workflow next to the operations console: build a warehouse of your own size from the asset catalog. The UI calls such a
+warehouse a **twin**; code, routes and API keep the name *scenario* (`#/scenarios`, `/api/scenarios`, `src/scenario/`). Nothing in the live simulation,
 the engine, the WebSocket protocol or the console changes; the console only gains a **Setup** button in the top bar.
 
 - **Routes** (hash router in `src/router.ts`, no dependency): `#/` console (default), `#/scenarios` list, `#/workspace/<id>` editor. A reload keeps the page; an unknown id redirects to the list.
-- **Scenarios page**: the saved scenarios from `GET /api/scenarios` (name, L × W × H, asset count, last update) with **Open** / **Delete**, and **New Scenario**
+- **Setup page**: the saved twins from `GET /api/scenarios` (name, L × W × H, asset count, last update) with **Open** / **Delete**, and **New Twin**
   (name + Length / Width / Height in metres; Length and Width 5–500, Height 3–40; the same bounds the backend enforces). Creating posts to the backend and opens the workspace.
   When the backend is unreachable the page shows an error state with **Retry**.
 - **Workspace**: left = all 11 catalog asset types (`src/scenario/assetDefs.tsx` maps each one onto the procedural 3D model the console already uses);
@@ -108,7 +109,8 @@ the engine, the WebSocket protocol or the console changes; the console only gain
   (click or Enter on a row adds one at the warehouse centre instead).
 - **Surfaces**: every instance except a camera sits on a surface — the floor, or the top of a rack / conveyor (an invisible cap at its height is the raycast target),
   so a sensor dropped on a rack lands at the rack height and returns to y = 0 when dragged off. Cameras keep an editable mount height and move on that plane.
-- **Move / rotate / delete**: drag an instance in the 3D view (snapping, clamped to the box), rotate with the yaw ring, **Q** / **E** (15°, Shift: 90°) or the inspector field;
+- **Move / rotate / delete**: drag an instance in the 3D view (surface snapping; the whole rotated footprint stays between the walls, and a footprint edge within 0.5 m of a wall snaps flush against it —
+  the same for a palette drop, whose ghost already shows the snapped place; typed inspector values, rotations and size changes are clamped but not snapped), rotate with the yaw ring (magnetic: within 7.5° of 0 / 90 / 180 / 270° it snaps to that direction), **Q** / **E** (15°, Shift: 90°) or the inspector field;
   **Delete** / **Backspace** removes, **Esc** deselects. The 2D view draws every footprint rotated (dashed when it sits above the floor), a camera FOV wedge, and selects on click; selection is shared with 3D.
 - **Coordinates**: Length → x, Width → z, Height → y (the `warehouse_layout.json` mapping); rotation is the yaw in radians rendered with three.js `rotation-y`, which the 2D view draws as `rotate(−θ)`.
 - **Auto-save**: every change is saved to the backend after 800 ms of inactivity (`PUT /api/scenarios/{id}`, its own 120/min rate-limit bucket); the header shows **Saved / Saving… / Save failed — retry**;

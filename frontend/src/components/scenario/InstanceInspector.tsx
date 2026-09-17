@@ -5,7 +5,7 @@
 import { useEffect, useState, type FocusEvent, type KeyboardEvent } from "react";
 import type { P3 } from "../../layout/types";
 import { ASSET_DEFS, type ParamField } from "../../scenario/assetDefs";
-import { clampToWarehouse, wrapRotation } from "../../scenario/model";
+import { wrapRotation } from "../../scenario/model";
 import { useScenarioStore } from "../../scenario/store";
 import type { ParamValue } from "../../scenario/types";
 
@@ -21,8 +21,9 @@ function NumField({ label, unit, value, min, max, step, disabled, onCommit }: { 
     const raw = e.target.value.trim(), n = Number(raw);
     if (raw === "" || !Number.isFinite(n)) { e.target.value = String(shown); return; }
     const v = clamp(n, min, max);
-    if (v === shown) { e.target.value = String(shown); return; }
-    onCommit(v);
+    if (v !== shown) onCommit(v);
+    // Show the store's value again: the store may keep it unchanged (a position pushed back to the same place by the walls), and then no remount happens
+    e.target.value = String(shown);
   };
   return (
     <label>
@@ -46,7 +47,8 @@ export function InstanceInspector() {
   const size = active.size;
   const { w, d } = def.footprint(inst.params);
   const h = def.height(inst.params);
-  const setPos = (axis: 0 | 1 | 2, v: number) => { const p = [...inst.position] as P3; p[axis] = v; updateInstance(inst.id, { position: clampToWarehouse(p, size) }); };
+  // The store keeps the footprint between the walls, so a value too close to a wall comes back as the nearest allowed one
+  const setPos = (axis: 0 | 1 | 2, v: number) => { const p = [...inst.position] as P3; p[axis] = v; updateInstance(inst.id, { position: p }); };
   const commitId = (raw: string) => {
     const id = raw.trim();
     if (id === inst.id) { setIdError(null); return; }
@@ -86,7 +88,7 @@ export function InstanceInspector() {
         ))}
       </div>
       <div className="insp-meta">Footprint {round(w)} × {round(d)} m · height {round(h)} m · {def.surface === "free" ? "free height" : "snaps to surfaces"}{def.stackable ? " · others can stack on it" : ""}</div>
-      <p className="hint">Drag the instance in the 3D view to move it; Q / E rotate by 15° (Shift: 90°); Delete removes it.</p>
+      <p className="hint">Drag the instance in the 3D view to move it: it cannot leave the walls and snaps flush against a wall within 0.5 m. The yaw ring snaps to 0 / 90 / 180 / 270° when close; Q / E rotate by 15° (Shift: 90°); Delete removes it.</p>
       <button className="btn danger" onClick={() => removeInstance(inst.id)}>Delete instance</button>
     </div>
   );

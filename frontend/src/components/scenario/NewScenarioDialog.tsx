@@ -41,8 +41,8 @@ export function NewScenarioDialog({ defaultName, onClose }: { defaultName: strin
 
   return (
     <div className="modal-bg" onClick={onClose}>
-      <div className="modal small" role="dialog" aria-modal="true" aria-label="New scenario" tabIndex={-1} ref={trap} onClick={(e) => e.stopPropagation()}>
-        <header className="modal-h"><span>New Scenario</span><span className="spacer" /><button type="button" className="icon-btn" aria-label="Close" onClick={onClose}>✕</button></header>
+      <div className="modal small" role="dialog" aria-modal="true" aria-label="New twin" tabIndex={-1} ref={trap} onClick={(e) => e.stopPropagation()}>
+        <header className="modal-h"><span>New Twin</span><span className="spacer" /><button type="button" className="icon-btn" aria-label="Close" onClick={onClose}>✕</button></header>
         <form className="modal-b dialog-form" onSubmit={(e) => void submit(e)} noValidate>
           <label>Name<input ref={nameRef} value={name} maxLength={80} onChange={(e) => setName(e.target.value)} /></label>
           <div className="size-grid">
@@ -54,7 +54,7 @@ export function NewScenarioDialog({ defaultName, onClose }: { defaultName: strin
           </div>
           <p className="hint" style={{ margin: 0 }}>The warehouse is an empty box: Length runs along x, Width along z, Height is the wall height. Length and Width 5–500 m, Height 3–40 m. Assets are placed in the workspace afterwards.</p>
           {touched && errors.map((er) => <div key={er} className="field-error">{er}</div>)}
-          {apiError && <div className="field-error">Could not create the scenario: {apiError}</div>}
+          {apiError && <div className="field-error">Could not create the twin: {apiError}</div>}
           <div className="dialog-actions">
             <button type="button" className="btn" onClick={onClose}>Cancel</button>
             <button type="submit" className="btn primary" disabled={busy}>{busy ? "Creating…" : "Create"}</button>

@@ -1,6 +1,7 @@
 /**
  * 3D editor of the workspace. The warehouse box (floor with the shared texture, translucent walls, 10 m grid), one InstanceNode per placed
- * asset — the existing procedural model inside <group position rotation-y> — click-to-select, drag-to-move with surface snapping, a yaw ring
+ * asset — the existing procedural model inside <group position rotation-y> — click-to-select, drag-to-move with surface snapping and magnetic
+ * walls the footprint cannot cross (store.moveInstance), a yaw ring
  * (drei TransformControls) on the selection, and the HTML5 drop target that turns a palette drag into a new instance while a translucent ghost
  * of the footprint follows the pointer.
  * Placement raycasts only hit meshes tagged `userData.surface`: the floor and the invisible top caps of stackable instances. A cap carries
@@ -15,7 +16,7 @@ import type { OrbitControls as OrbitControlsImpl, TransformControls as Transform
 import type { P3 } from "../../layout/types";
 import type { AssetInstance, AssetTypeId, ScenarioSize } from "../../scenario/types";
 import { ASSET_DEFS, type AssetDef } from "../../scenario/assetDefs";
-import { placeOnSurface, wrapRotation } from "../../scenario/model";
+import { placeOnSurface, snapToCardinal, wrapRotation, yawFromQuaternion } from "../../scenario/model";
 import { useScenarioStore } from "../../scenario/store";
 import { useFloorTexture } from "../scene/WarehouseShell";
 import { DRAG_MIME } from "./AssetPalette";
@@ -26,6 +27,8 @@ interface CaptureTarget { setPointerCapture(pointerId: number): void; releasePoi
 const captureTarget = (e: ThreeEvent<PointerEvent>) => e.target as unknown as CaptureTarget;
 /** three-stdlib types `axis` as private; it is the gizmo handle under the pointer (null when the pointer is not on the ring) */
 const gizmoAxis = (tc: TransformControlsImpl | null) => (tc as unknown as { axis: string | null } | null)?.axis ?? null;
+/** Yaw of an object that only ever rotates around y (see yawFromQuaternion for why `rotation.y` is not enough) */
+const yawOf = (obj: THREE.Object3D) => yawFromQuaternion(obj.quaternion.x, obj.quaternion.y, obj.quaternion.z, obj.quaternion.w);
 /** Imperative raycast bridge from the DOM drop handlers (and the drag-move) into the R3F scene */
 interface SceneApi {
   hitSurface(ndc: THREE.Vector2, excludeId?: string): Hit | null;
@@ -71,16 +74,21 @@ function FloorGrid({ L, W, step, color, opacity, y }: { L: number; W: number; st
   return <lineSegments geometry={geo} position={[0, y, 0]}><lineBasicMaterial color={color} transparent opacity={opacity} /></lineSegments>;
 }
 
+/** Wall slab thickness (m); the slabs stand outside the floor, so the floor edge x = 0 / L, z = 0 / W is the inner wall face */
+const WALL_T = 0.15;
 /** Floor (the permanent raycast surface), translucent walls, wall edges, lights, background */
 function EditorShell({ size }: { size: ScenarioSize }) {
   const { length: L, width: W, height: H } = size;
   const floorTex = useFloorTexture(L, W);
   const scene = useThree((s) => s.scene);
   useEffect(() => { scene.background = new THREE.Color("#05080f"); return () => { scene.background = null; }; }, [scene]);
-  const walls = useMemo<Array<{ p: P3; s: P3 }>>(() => [
-    { p: [L / 2, H / 2, 0], s: [L, H, 0.15] }, { p: [L / 2, H / 2, W], s: [L, H, 0.15] },
-    { p: [0, H / 2, W / 2], s: [0.15, H, W] }, { p: [L, H / 2, W / 2], s: [0.15, H, W] },
-  ], [L, W, H]);
+  const walls = useMemo<Array<{ p: P3; s: P3 }>>(() => {
+    const h = WALL_T / 2;
+    return [
+      { p: [L / 2, H / 2, -h], s: [L + 2 * WALL_T, H, WALL_T] }, { p: [L / 2, H / 2, W + h], s: [L + 2 * WALL_T, H, WALL_T] },
+      { p: [-h, H / 2, W / 2], s: [WALL_T, H, W] }, { p: [L + h, H / 2, W / 2], s: [WALL_T, H, W] },
+    ];
+  }, [L, W, H]);
   const floorEdge: P3[] = [[0, 0, 0], [L, 0, 0], [L, 0, W], [0, 0, W], [0, 0, 0]];
   const topEdge: P3[] = [[0, H, 0], [L, H, 0], [L, H, W], [0, H, W], [0, H, 0]];
   return (
@@ -178,15 +186,14 @@ const InstanceNode = memo(function InstanceNode({ inst, selected, onSelect, onPo
   );
 });
 
-/** Translucent footprint × height box that follows the surface under a palette drag */
-function Ghost({ type, point }: { type: AssetTypeId; point: P3 }) {
+/** Translucent footprint × height box that follows the surface under a palette drag, already at the place the drop would put the instance (mount height, walls, wall snap) */
+function Ghost({ type, point, size }: { type: AssetTypeId; point: P3; size: ScenarioSize }) {
   const def = ASSET_DEFS[type];
   const { w, d } = def.footprint(def.defaults);
   const h = def.height(def.defaults);
-  const mount = def.defaults.mount_h;
-  const y = def.surface === "free" && typeof mount === "number" ? mount : point[1];
+  const [x, y, z] = placeOnSurface(type, point, size, []).position;   // the throwaway id is never used
   return (
-    <mesh position={[point[0], y + h / 2, point[2]]} raycast={() => null}>
+    <mesh position={[x, y + h / 2, z]} raycast={() => null}>
       <boxGeometry args={[w, h, d]} />
       <meshBasicMaterial color={def.color} transparent opacity={0.35} depthWrite={false} />
     </mesh>
@@ -251,6 +258,10 @@ export function EditorScene({ resetKey }: { resetKey: number }) {
     if (drag && !instances?.some((i) => i.id === drag.id)) endDrag();   // the dragged instance was deleted (Delete key) mid-drag
   }, [instances, endDrag]);
   const onSelect = useCallback((id: string) => select(id), [select]);
+  /** While the ring is dragged: keep the Euler a clean (0, yaw, 0) and snap the yaw when it is within CARDINAL_SNAP_TOLERANCE of 0 / 90 / 180 / 270° */
+  const onRotateChange = useCallback((obj: THREE.Object3D) => {
+    obj.rotation.set(0, snapToCardinal(yawOf(obj)), 0);
+  }, []);
   /** Commits to the instance the gizmo actually rotated (its group carries the id), never to whatever is selected at mouse-up */
   const onRotateCommit = useCallback((obj: THREE.Object3D) => {
     const id = obj.userData.instanceId as string | undefined;
@@ -307,9 +318,10 @@ export function EditorScene({ resetKey }: { resetKey: number }) {
           <InstanceNode key={inst.id} inst={inst} selected={inst.id === selectedId} onSelect={onSelect}
             onPointerDown={onNodePointerDown} onPointerMove={onNodePointerMove} onPointerUp={onNodePointerUp} onSelectedObject={setSelectedObject} />
         ))}
-        {ghost && <Ghost type={ghost.type} point={ghost.point} />}
+        {ghost && <Ghost type={ghost.type} point={ghost.point} size={size} />}
         {selectedObject && selectedId && (
-          <TransformControls ref={gizmoRef} object={selectedObject} mode="rotate" showX={false} showZ={false} size={0.9} onMouseUp={() => onRotateCommit(selectedObject)} />
+          <TransformControls ref={gizmoRef} object={selectedObject} mode="rotate" showX={false} showZ={false} size={0.9}
+            onObjectChange={() => onRotateChange(selectedObject)} onMouseUp={() => { onRotateChange(selectedObject); onRotateCommit(selectedObject); }} />
         )}
         <OrbitControls ref={orbitRef} makeDefault target={[size.length / 2, 0, size.width / 2]} maxPolarAngle={Math.PI / 2.05} minDistance={3} maxDistance={Math.max(size.length, size.width) * 4} enableDamping dampingFactor={0.1} />
         <FrameCamera size={size} resetKey={resetKey} controls={orbitRef} />

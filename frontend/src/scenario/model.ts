@@ -1,10 +1,10 @@
 /**
- * Pure helpers for the scenario workspace (no React, no DOM): size validation, instance ids, placement (surface snapping, clamping to the
- * warehouse), rotation wrapping, 2D footprints and the debounced auto-save scheduler. Everything here is covered by tests/scenario.test.ts.
+ * Pure helpers for the scenario workspace (no React, no DOM): size validation, instance ids, placement (surface snapping, footprints kept
+ * between the walls with magnetic walls), rotation wrapping, 2D footprints and the debounced auto-save scheduler. Everything here is covered by tests/scenario.test.ts.
  */
 import type { P2, P3 } from "../layout/types";
 import type { AssetInstance, AssetTypeId, ScenarioSize } from "./types";
-import { ASSET_DEFS, type AssetDef } from "./assetDefs";
+import { ASSET_DEFS, type AssetDef, type Params } from "./assetDefs";
 
 /** Same bounds as ScenarioSize in backend/app/schema.py (metres) */
 export const SIZE_LIMITS: Record<keyof ScenarioSize, readonly [number, number]> = { length: [5, 500], width: [5, 500], height: [3, 40] };
@@ -31,10 +31,36 @@ export function nextInstanceId(type: AssetTypeId, existing: readonly AssetInstan
   for (let n = 1; ; n++) { const id = ID_PREFIX[type] + String(n).padStart(2, "0"); if (!used.has(id)) return id; }
 }
 
-/** x ∈ [0, length], y ∈ [0, height], z ∈ [0, width] */
-export function clampToWarehouse(p: P3, size: ScenarioSize): P3 {
-  const c = (v: number, hi: number) => Math.min(hi, Math.max(0, v));
-  return [c(p[0], size.length), c(p[1], size.height), c(p[2], size.width)];
+/** Distance (m) within which a footprint edge moved towards a wall is pulled flush against it (pointer moves and drops only) */
+export const WALL_SNAP_DISTANCE = 0.5;
+
+/** Half of the axis-aligned x / z extent of the footprint turned by `rotation`: the box that footprintCorners spans */
+export function footprintHalfExtents(def: AssetDef, params: Params, rotation: number): { hx: number; hz: number } {
+  const { w, d } = def.footprint(params);
+  const c = Math.abs(Math.cos(rotation)), s = Math.abs(Math.sin(rotation));
+  return { hx: (w * c + d * s) / 2, hz: (w * s + d * c) / 2 };
+}
+
+/** One axis: keep [v − half, v + half] inside [0, hi], centred when it does not fit; an edge within `snap` of a wall is pulled flush against it */
+function betweenWalls(v: number, half: number, hi: number, snap: number): number {
+  const lo = half, up = hi - half;
+  if (up < lo) return hi / 2;
+  const c = Math.min(up, Math.max(lo, v));
+  if (c - lo <= snap) return lo;
+  if (up - c <= snap) return up;
+  return c;
+}
+
+/**
+ * The whole footprint stays between the walls, not just the instance centre: x ∈ [hx, L − hx] and z ∈ [hz, W − hz] for the rotated footprint's
+ * half extents (an instance wider than the warehouse is centred), y ∈ [0, H]. `snap` > 0 makes the walls magnetic (WALL_SNAP_DISTANCE for
+ * drags and drops; typed inspector values and rotations only get the clamp). Returns `inst` itself when nothing had to move.
+ */
+export function constrainToWalls(inst: AssetInstance, size: ScenarioSize, snap = 0): AssetInstance {
+  const { hx, hz } = footprintHalfExtents(ASSET_DEFS[inst.type], inst.params, inst.rotation);
+  const [x, y, z] = inst.position;
+  const position: P3 = [betweenWalls(x, hx, size.length, snap), Math.min(size.height, Math.max(0, y)), betweenWalls(z, hz, size.width, snap)];
+  return position[0] === x && position[1] === y && position[2] === z ? inst : { ...inst, position };
 }
 
 /** Millimetre precision: raycast hits carry ~15 digits that only bloat the saved document */
@@ -45,6 +71,24 @@ const TAU = 2 * Math.PI;
 export function wrapRotation(r: number): number { const w = ((r % TAU) + TAU) % TAU; return w >= TAU ? 0 : w; }
 export function rotateBy(rotation: number, delta: number): number { return wrapRotation(rotation + delta); }
 
+/** The yaw ring is magnetic: within this many radians of 0°, 90°, 180° or 270° it snaps to that direction (half a Q / E step) */
+export const CARDINAL_SNAP_TOLERANCE = (7.5 * Math.PI) / 180;
+/** Nearest multiple of 90° when `rotation` is within `tolerance` of one, otherwise `rotation` unchanged; the result is wrapped into [0, 2π) */
+export function snapToCardinal(rotation: number, tolerance = CARDINAL_SNAP_TOLERANCE): number {
+  const quarter = Math.PI / 2;
+  const nearest = Math.round(rotation / quarter) * quarter;
+  return wrapRotation(Math.abs(rotation - nearest) <= tolerance ? nearest : rotation);
+}
+
+/**
+ * Yaw around y of a rotation given as a quaternion. `Object3D.rotation.y` is not usable for this: three.js decomposes a pure 120° yaw
+ * into the Euler triple (π, 60°, π), so reading `.y` after a TransformControls drag would store 60°. atan2(m13, m11) of the rotation
+ * matrix is the yaw itself, in (−π, π].
+ */
+export function yawFromQuaternion(x: number, y: number, z: number, w: number): number {
+  return Math.atan2(2 * (x * z + w * y), 1 - 2 * (y * y + z * z));
+}
+
 /** A new instance of `type` at `position` with the editor defaults cloned and a fresh id; a free-height type (camera) starts at its mount height */
 export function makeInstance(type: AssetTypeId, position: P3, existing: readonly AssetInstance[]): AssetInstance {
   const def = ASSET_DEFS[type];
@@ -54,10 +98,10 @@ export function makeInstance(type: AssetTypeId, position: P3, existing: readonly
   return { id: nextInstanceId(type, existing), type, position: [position[0], y, position[2]], rotation: 0, params };
 }
 
-/** Drop / place: snap types take the surface hit point (the floor or a stackable top), free types keep their mount height; always inside the warehouse */
+/** Drop / place: snap types take the surface hit point (the floor or a stackable top), free types keep their mount height; the footprint stays between the walls and snaps flush to a wall within WALL_SNAP_DISTANCE */
 export function placeOnSurface(type: AssetTypeId, hit: P3, size: ScenarioSize, existing: readonly AssetInstance[]): AssetInstance {
-  const inst = makeInstance(type, hit, existing);
-  return { ...inst, position: roundMm(clampToWarehouse(inst.position, size)) };
+  const inst = constrainToWalls(makeInstance(type, hit, existing), size, WALL_SNAP_DISTANCE);
+  return { ...inst, position: roundMm(inst.position) };
 }
 
 /**

@@ -25,7 +25,7 @@ function Header({ children, right }: { children?: ReactNode; right?: ReactNode }
       {children}
       <div className="topbar-right">
         {right}
-        <button className="tb-btn" onClick={() => navigate({ page: "scenarios" })} title="Back to the scenario list">‹ Scenarios</button>
+        <button className="tb-btn" onClick={() => navigate({ page: "scenarios" })} title="Back to the twin list">‹ Twins</button>
         <button className="tb-btn" onClick={() => navigate({ page: "console" })} title="Operations console (live simulation)">Console</button>
       </div>
     </header>
@@ -85,11 +85,11 @@ export function WorkspacePage({ id }: { id: string }) {
   if (activeState === "error") {
     return (
       <div className="page"><Header />
-        <div className="page-body narrow"><div className="error-box">Cannot load this scenario: {activeError}<button className="btn" onClick={() => void open(id)}>Retry</button></div></div>
+        <div className="page-body narrow"><div className="error-box">Cannot load this twin: {activeError}<button className="btn" onClick={() => void open(id)}>Retry</button></div></div>
       </div>
     );
   }
-  if (!active) return <div className="page"><Header /><div className="page-body narrow"><p className="hint">Loading scenario…</p></div></div>;
+  if (!active) return <div className="page"><Header /><div className="page-body narrow"><p className="hint">Loading twin…</p></div></div>;
 
   const { length: L, width: W, height: H } = active.size;
   const saveText = saveState === "saved" ? "Saved" : saveState === "saving" ? "Saving…" : "Save failed — retry";
@@ -97,7 +97,7 @@ export function WorkspacePage({ id }: { id: string }) {
   return (
     <div className="page">
       <Header right={<span className={"save-state " + saveState} title={saveTitle} role={saveState === "error" ? "button" : undefined} onClick={saveState === "error" ? retrySave : undefined}>{saveText}</span>}>
-        <input className="ws-name" key={active.name} defaultValue={active.name} maxLength={80} aria-label="Scenario name" title="Scenario name — click to rename"
+        <input className="ws-name" key={active.name} defaultValue={active.name} maxLength={80} aria-label="Twin name" title="Twin name — click to rename"
           onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== active.name) renameScenario(v); else e.target.value = active.name; }}
           onKeyDown={(e) => { if (e.key === "Escape") e.currentTarget.value = active.name; if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur(); }} />
         <span className="ws-size" title="Length × Width × Height">{L} × {W} × {H} m</span>
@@ -108,7 +108,7 @@ export function WorkspacePage({ id }: { id: string }) {
           <div className="view-tabs">{TABS.map(([k, l]) => <button key={k} className={viewTab === k ? "on" : ""} onClick={() => setViewTab(k)}>{l}</button>)}</div>
           {viewTab === "3D" && <div className="vp-toolbar"><button className="icon-btn" title="Reset camera" onClick={() => setResetKey((k) => k + 1)}>{Icon.expand}</button></div>}
           {viewTab === "3D" ? <EditorScene resetKey={resetKey} /> : <EditorMap2D />}
-          <div className="ws-help">Drag a type from the list into the 3D view · drag an instance to move it · ring or Q / E to rotate (Shift: 90°) · Delete removes · Esc deselects</div>
+          <div className="ws-help">Drag a type from the list into the 3D view · drag an instance to move it (stays inside the walls, snaps flush to a wall within 0.5 m) · ring (snaps near 0 / 90 / 180 / 270°) or Q / E to rotate (Shift: 90°) · Delete removes · Esc deselects</div>
         </main>
         <aside className="ws-col"><Panel title="Inspector" sub={selectedId ?? "nothing selected"} grow><InstanceInspector /></Panel></aside>
       </div>

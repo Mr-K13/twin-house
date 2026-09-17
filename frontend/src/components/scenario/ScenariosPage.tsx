@@ -1,4 +1,4 @@
-/** Scenarios page (#/scenarios): the saved warehouse scenarios from the backend with Open / Delete, and the New Scenario dialog */
+/** Setup page (#/scenarios): the saved warehouse twins from the backend with Open / Delete, and the New Twin dialog. The UI says "twin"; code, routes and API keep "scenario" */
 import { useEffect, useState } from "react";
 import { useScenarioStore } from "../../scenario/store";
 import type { ScenarioSize, ScenarioSummary } from "../../scenario/types";
@@ -20,7 +20,7 @@ export function ScenariosPage() {
   useEffect(() => { void loadList(); }, [loadList]);
 
   const onDelete = async (s: ScenarioSummary) => {
-    if (!confirm(`Delete scenario "${s.name}" (${s.instance_count} assets)? This cannot be undone.`)) return;
+    if (!confirm(`Delete twin "${s.name}" (${s.instance_count} assets)? This cannot be undone.`)) return;
     setBusy(s.id); setError(null);
     try { await remove(s.id); } catch (e) { setError(`Could not delete "${s.name}": ${e instanceof Error ? e.message : String(e)}`); } finally { setBusy(null); }
   };
@@ -29,17 +29,17 @@ export function ScenariosPage() {
   return (
     <div className="page">
       <header className="topbar">
-        <div className="brand"><span className="ai">Twin</span><span>House</span><span className="brand-sub">Scenario setup</span></div>
+        <div className="brand"><span className="ai">Twin</span><span>House</span><span className="brand-sub">Twin setup</span></div>
         <div className="topbar-right">
           <button className="tb-btn" onClick={() => navigate({ page: "console" })} title="Operations console (live simulation)">‹ Console</button>
-          <button className="btn primary" onClick={() => setDialog(true)}>+ New Scenario</button>
+          <button className="btn primary" onClick={() => setDialog(true)}>+ New Twin</button>
         </div>
       </header>
       <div className="page-body narrow">
-        <p className="hint">A scenario is a warehouse of your own size that you populate from the asset catalog in the Workspace. Scenarios are stored in the backend, so they are shared across browsers; every change in the Workspace is saved automatically.</p>
-        {listState === "loading" && <p className="hint">Loading scenarios…</p>}
+        <p className="hint">A twin is a warehouse of your own size that you populate from the asset catalog in the Workspace. Twins are stored in the backend, so they are shared across browsers; every change in the Workspace is saved automatically.</p>
+        {listState === "loading" && <p className="hint">Loading twins…</p>}
         {listState === "error" && <div className="error-box">Cannot reach the backend: {listError}<button className="btn" onClick={() => void loadList()}>Retry</button></div>}
-        {listState === "ready" && summaries.length === 0 && <p className="hint">No scenarios yet. Click <b>New Scenario</b> to create the first one.</p>}
+        {listState === "ready" && summaries.length === 0 && <p className="hint">No twins yet. Click <b>New Twin</b> to create the first one.</p>}
         {listState === "ready" && summaries.length > 0 && (
           <div className="wi-list sc-list">
             <div className="sc-row head"><span>Name</span><span>Size L × W × H</span><span>Assets</span><span>Updated</span><span /></div>
@@ -59,7 +59,7 @@ export function ScenariosPage() {
         )}
         {error && <div className="error-box">{error}</div>}
       </div>
-      {dialog && <NewScenarioDialog defaultName={`Scenario ${summaries.length + 1}`} onClose={() => setDialog(false)} />}
+      {dialog && <NewScenarioDialog defaultName={`Twin ${summaries.length + 1}`} onClose={() => setDialog(false)} />}
     </div>
   );
 }

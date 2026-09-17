@@ -37,7 +37,7 @@ It runs on a laptop with an integrated GPU — no RTX, no ROS, no cloud required
 | 👁️ **VLM perception** | Send a virtual CCTV frame to a vision model → `{event, severity, bbox, confidence}` drawn on the feed. |
 | 🔌 **Real-time sync** | FastAPI + WebSocket: one `FULL` state, then per-tick `PATCH` diffs (~12 KB/s). If the backend is unreachable the browser falls back to a built-in TypeScript engine and keeps running. |
 | 📜 **Audit log & KPI** | Every event persisted to SQLite with filters and CSV/JSON export; throughput, utilization, on-time rate, wait time, congestion, energy. |
-| 🧰 **Scenario setup** | A Scenarios page creates a warehouse of any size (Length × Width × Height); the Workspace places every catalog asset type by drag-and-drop into the 3D view with surface snapping (floor or rack / conveyor top), move / rotate / delete, an inspector for every parameter, a 2D top-down view, and auto-save to the backend. |
+| 🧰 **Twin setup** | The Setup page lists the saved twins and creates a warehouse of any size (Length × Width × Height); the Workspace places every catalog asset type by drag-and-drop into the 3D view with surface snapping (floor or rack / conveyor top), move / rotate / delete, an inspector for every parameter, a 2D top-down view, and auto-save to the backend. |
 
 ## 🚀 Quick start
 
@@ -95,7 +95,7 @@ TwinHouse/
 ```bash
 cd backend && python -m pytest -q      # 53 tests: PRNG parity, A*, 20-min stress (no collisions < 0.5 m), determinism, lifts,
                                         #           low battery, intrusion, gridlock-free compound failure, WS/REST, AI, What-if, scenario documents
-cd frontend && npm test                 # 59 tests: same engine contract in TypeScript, asset catalog, scenario workspace model
+cd frontend && npm test                 # 66 tests: same engine contract in TypeScript, asset catalog, scenario workspace model and store
 ```
 
 ## ☁️ Deployment
