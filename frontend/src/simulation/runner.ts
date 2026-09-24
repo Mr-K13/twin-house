@@ -11,8 +11,9 @@ import { wsConnect, wsDisconnect, wsSend } from "../services/ws";
 import type { ScenarioInjection, TaskPriority, TaskType } from "../schema/twin_state";
 
 let engine: SimEngine | null = null;
+/** The engine of the active layout: entering another twin's console (setLayout) makes the next call build a fresh one */
 export function getEngine(): SimEngine {
-  if (!engine) engine = new SimEngine(layout, { seed: useStore.getState().seed });
+  if (!engine || engine.layout !== layout) engine = new SimEngine(layout, { seed: useStore.getState().seed });
   return engine;
 }
 export function resetEngine(seed?: number) {
@@ -55,7 +56,8 @@ export const simControl = {
   },
 };
 
-export function useSimulationRunner() {
+/** `online`: try the backend WebSocket first (the built-in twin, whose layout the backend simulates). Otherwise only the local engine runs (a user twin). */
+export function useSimulationRunner({ online }: { online: boolean }) {
   useEffect(() => {
     const st = useStore.getState();
     let raf = 0, last = performance.now(), acc = 0;
@@ -78,6 +80,7 @@ export function useSimulationRunner() {
     // Show the initial frame from the local engine first. This prevents a blank screen while the connection starts.
     st.setTwin(getEngine().snapshot());
     raf = requestAnimationFrame(loop);
+    if (!online) { st.setSource("local"); return () => cancelAnimationFrame(raf); }
 
     wsConnect((conn) => {
       const s = useStore.getState();
@@ -93,5 +96,5 @@ export function useSimulationRunner() {
     });
     // On StrictMode (mount -> cleanup -> mount) or a normal unmount, close the WebSocket and the listener together. Otherwise a duplicate connection remains.
     return () => { cancelAnimationFrame(raf); wsDisconnect(); };
-  }, []);
+  }, [online]);
 }

@@ -231,20 +231,23 @@ describe("scenario store", () => {
 });
 
 describe("hash router", () => {
-  it("parses every route and falls back to the console for junk", () => {
-    expect(parseRoute("")).toEqual({ page: "console" });
-    expect(parseRoute("#/")).toEqual({ page: "console" });
+  it("parses every route and falls back to the setup list for junk", () => {
+    expect(parseRoute("")).toEqual({ page: "scenarios" });
+    expect(parseRoute("#/")).toEqual({ page: "scenarios" });
     expect(parseRoute("#/scenarios")).toEqual({ page: "scenarios" });
     expect(parseRoute("#/scenarios/")).toEqual({ page: "scenarios" });
     expect(parseRoute("#/workspace/sc-0123456789ab")).toEqual({ page: "workspace", id: "sc-0123456789ab" });
     expect(parseRoute("#/workspace/a%20b")).toEqual({ page: "workspace", id: "a b" });
-    expect(parseRoute("#/workspace/")).toEqual({ page: "console" });
-    expect(parseRoute("#/workspace/a/b")).toEqual({ page: "console" });
-    expect(parseRoute("#/nope")).toEqual({ page: "console" });
-    expect(parseRoute("#/workspace/%E0%A4%A")).toEqual({ page: "console" });
+    expect(parseRoute("#/console/main-warehouse")).toEqual({ page: "console", id: "main-warehouse" });
+    expect(parseRoute("#/console/sc-1/")).toEqual({ page: "console", id: "sc-1" });
+    expect(parseRoute("#/console")).toEqual({ page: "scenarios" });
+    expect(parseRoute("#/workspace/")).toEqual({ page: "scenarios" });
+    expect(parseRoute("#/workspace/a/b")).toEqual({ page: "scenarios" });
+    expect(parseRoute("#/nope")).toEqual({ page: "scenarios" });
+    expect(parseRoute("#/workspace/%E0%A4%A")).toEqual({ page: "scenarios" });
   });
   it("round-trips through routeHash", () => {
-    for (const r of [{ page: "console" }, { page: "scenarios" }, { page: "workspace", id: "sc-1" }, { page: "workspace", id: "a b/c" }] as const) expect(parseRoute(routeHash(r))).toEqual(r);
+    for (const r of [{ page: "scenarios" }, { page: "console", id: "sc-1" }, { page: "console", id: "a b/c" }, { page: "workspace", id: "sc-1" }, { page: "workspace", id: "a b/c" }] as const) expect(parseRoute(routeHash(r))).toEqual(r);
   });
 });
 

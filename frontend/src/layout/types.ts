@@ -1,4 +1,5 @@
 /** Types for warehouse_layout.json; they match docs/layout/warehouse_layout_format.md */
+import type { PersonState } from "../schema/twin_state";
 export type P2 = [number, number];
 export type P3 = [number, number, number];
 export type Rect = [number, number, number, number];
@@ -17,7 +18,7 @@ export interface LayoutSensor { id: string; kind: string; zone: string; position
 export interface LayoutLocation { id: string; kind: string; zone: string; floor?: number; rack_id: string | null; level_range: [number, number] | null; access_point: P2 }
 export interface LayoutSpawnRobot { id: string; position: P3; heading: number; battery: number; floor?: number }
 export interface LayoutFloor { id: number; name: string; elevation: number; footprint?: P2[] }
-export interface LayoutLift { id: string; cell: [number, number]; floors: number[]; ride_ticks: number }
+export interface LayoutLift { id: string; cell: [number, number]; floors: number[]; ride_ticks: number; /** Platform travel height (m) when the layout has no second floor to take it from (a projected twin) */ travel_m?: number }
 
 export interface WarehouseLayout {
   schema_version: string;
@@ -45,4 +46,6 @@ export interface WarehouseLayout {
   /** Building structure columns and other physical obstacles: the F1 navigation grid blocks the full area; WarehouseShell renders the columns from this */
   obstacles: Array<{ id: string; kind: string; rect: [number, number, number, number] }>;
   spawn: { robots: LayoutSpawnRobot[] };
+  /** Decorative workers / forklifts (not simulated). Absent in warehouse_layout.json, whose placements live in scene/People.tsx STATIC_PEOPLE; a projected twin always sets it */
+  static_people?: PersonState[];
 }

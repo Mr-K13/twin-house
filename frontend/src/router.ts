@@ -1,25 +1,24 @@
 /**
- * Dependency-free hash router: `#/` operations console (default), `#/scenarios` setup list, `#/workspace/<id>` scenario editor.
- * Unknown hashes fall back to the console; a reload keeps the page.
+ * Dependency-free hash router: `#/` twin setup list (default), `#/workspace/<id>` twin editor, `#/console/<id>` operations console of one twin.
+ * `#/scenarios` (the old setup link) and unknown hashes fall back to the setup list; a reload keeps the page.
  */
 import { useSyncExternalStore } from "react";
 
-export type Route = { page: "console" } | { page: "scenarios" } | { page: "workspace"; id: string };
+export type Route = { page: "scenarios" } | { page: "workspace"; id: string } | { page: "console"; id: string };
 
 export function parseRoute(hash: string): Route {
   const path = hash.replace(/^#/, "").replace(/^\/+/, "").replace(/\/+$/, "");
-  if (path === "scenarios") return { page: "scenarios" };
-  const m = /^workspace\/([^/?#]+)$/.exec(path);
+  const m = /^(workspace|console)\/([^/?#]+)$/.exec(path);
   if (m) {
-    try { return { page: "workspace", id: decodeURIComponent(m[1]) }; } catch { return { page: "console" }; }
+    try { return { page: m[1] as "workspace" | "console", id: decodeURIComponent(m[2]) }; } catch { return { page: "scenarios" }; }
   }
-  return { page: "console" };
+  return { page: "scenarios" };
 }
 
 export function routeHash(route: Route): string {
   switch (route.page) {
-    case "scenarios": return "#/scenarios";
     case "workspace": return `#/workspace/${encodeURIComponent(route.id)}`;
+    case "console": return `#/console/${encodeURIComponent(route.id)}`;
     default: return "#/";
   }
 }

@@ -1,9 +1,9 @@
 import { Html } from "@react-three/drei";
-import { useStore } from "../../state/store";
+import { layout, useStore } from "../../state/store";
 import { FLOOR_ELEV } from "./Mezzanine";
 import type { PersonState } from "../../schema/twin_state";
 
-/** Decorative people on floor 1 (not driven by the simulation). They stand in the maintenance area (RESTRICT-1), which robots cannot enter,
+/** Decorative people on floor 1 of the Main Warehouse (not driven by the simulation; a twin's own placements come from layout.static_people). They stand in the maintenance area (RESTRICT-1), which robots cannot enter,
  *  so they never sit next to aisles or charging rows where robots pass close by. The asset catalog lists these as the placed instances. */
 export const STATIC_PEOPLE: readonly PersonState[] = [
   { id: "W-01", kind: "WORKER", position: [4.5, 0, 4.5], heading: 0, zone: null, floor: 1, expires_tick: null },
@@ -24,7 +24,7 @@ export function People({ lite = false }: { lite?: boolean }) {
   const show = (floor: number) => activeFloor === "all" || floor === activeFloor;
   return (
     <group>
-      {show(1) && STATIC_PEOPLE.map((p) => p.kind === "WORKER" ? <Worker key={p.id} position={p.position} heading={p.heading} /> : <Forklift key={p.id} position={p.position} heading={p.heading} />)}
+      {show(1) && (layout.static_people ?? STATIC_PEOPLE).map((p) => p.kind === "WORKER" ? <Worker key={p.id} position={p.position} heading={p.heading} /> : <Forklift key={p.id} position={p.position} heading={p.heading} />)}
       {Object.values(people).filter((p) => show(p.floor ?? 1)).map((p) => {
         const ey = (FLOOR_ELEV[p.floor ?? 1] ?? 0) + explodeY(p.floor ?? 1);
         return (

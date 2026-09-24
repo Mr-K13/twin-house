@@ -1,4 +1,4 @@
-import { useStore, tickToClock } from "../../state/store";
+import { layout, useStore, tickToClock } from "../../state/store";
 import { simControl } from "../../simulation/runner";
 import { Icon } from "../ui/primitives";
 import { navigate } from "../../router";
@@ -20,7 +20,7 @@ export function TopBar() {
   const simDate = "2026/05/20";
   return (
     <header className="topbar">
-      <div className="brand"><span className="ai">Twin</span><span>House</span><span className="brand-sub">Digital Twin Warehouse</span></div>
+      <div className="brand"><span className="ai">Twin</span><span>House</span><span className="brand-sub" title="Twin shown in this console">{layout.name}</span></div>
       <span className={"badge-live " + (paused ? "paused" : mode === "WHATIF" ? "whatif" : "live")}>
         <span className="dot" style={{ background: "currentColor", width: 6, height: 6 }} />{paused ? "PAUSED" : mode === "WHATIF" ? "SIMULATION" : "LIVE"}
       </span>
@@ -43,7 +43,7 @@ export function TopBar() {
         <button className={"tb-btn" + (drawer === "ops" ? " on" : "")} onClick={() => setDrawer("ops")} title="AI Operations: KPI + explainable decisions">{Icon.brain}<span>AI Ops</span></button>
         <button className={"tb-btn" + (drawer === "whatif" ? " on" : "")} onClick={() => setDrawer("whatif")} title="What-if simulation: clone the twin, inject, compare KPI">{Icon.fork}<span>What-if</span></button>
         <button className={"tb-btn" + (modal === "catalog" ? " on" : "")} onClick={() => setModal("catalog")} title="Asset catalog: equipment types, parameters, characteristics, instances">{Icon.grid}<span>Catalog</span></button>
-        <button className="tb-btn" onClick={() => navigate({ page: "scenarios" })} title="Twin setup: build a warehouse of your own size from the asset catalog">{Icon.ruler}<span>Setup</span></button>
+        <button className="tb-btn" onClick={() => navigate({ page: "scenarios" })} title="Back to the twin list: open another twin or build a new one">{Icon.ruler}<span>Twins</span></button>
         <div className="vsep" />
         <button className="icon-btn" title="Audit log" onClick={() => setModal("audit")}>{Icon.bell}{unack > 0 && <span className="dot">{unack}</span>}</button>
         <button className="icon-btn" title={`Render quality: ${quality} (click to cycle)`} onClick={() => setQuality(quality === "low" ? "medium" : quality === "medium" ? "high" : "low")}>{Icon.gear}</button>

@@ -96,16 +96,19 @@ function TaskTable() {
   const rows = Object.values(tasks).filter((t) => !status || t.status === status).sort((a, b) => order[a.status] - order[b.status] || b.created_tick - a.created_tick);
   const pretty = (id: string) => { const l = locs[id]; if (!l) return id; return l.kind === "SHELF" ? `Shelf ${id.replace("SHELF-", "")}` : id.replace("-", " "); };
   const opts = layout.locations.filter((l) => l.kind !== "CHARGING");
-  const err = taskError(locs, type, source, dest);
+  // The defaults are Main Warehouse ids; another twin starts on its own first shelf / station
+  const orFirst = (id: string, kinds: string[]) => (opts.some((l) => l.id === id) ? id : (opts.find((l) => kinds.includes(l.kind)) ?? opts[0])?.id ?? "");
+  const src = orFirst(source, ["SHELF"]), dst = orFirst(dest, ["PACKING", "SORTING"]);
+  const err = taskError(locs, type, src, dst);
   return (
     <>
       <Head title="Tasks" />
       <div className="modal-b">
-        <form className="form" onSubmit={(e) => { e.preventDefault(); if (!err) simControl.createTask({ type, priority, source, destination: dest }); }}>
+        <form className="form" onSubmit={(e) => { e.preventDefault(); if (!err) simControl.createTask({ type, priority, source: src, destination: dst }); }}>
           <label>Type<select value={type} onChange={(e) => setType(e.target.value as TaskType)}>{["PICK", "TRANSPORT", "REPLENISH", "RETURN"].map((t) => <option key={t}>{t}</option>)}</select></label>
           <label>Priority<select value={priority} onChange={(e) => setPriority(e.target.value as TaskPriority)}>{["LOW", "NORMAL", "HIGH", "CRITICAL"].map((t) => <option key={t}>{t}</option>)}</select></label>
-          <label>Source<select value={source} onChange={(e) => setSource(e.target.value)}>{opts.map((l) => <option key={l.id} value={l.id}>{pretty(l.id)}</option>)}</select></label>
-          <label>Destination<select value={dest} onChange={(e) => setDest(e.target.value)}>{opts.map((l) => <option key={l.id} value={l.id}>{pretty(l.id)}</option>)}</select></label>
+          <label>Source<select value={src} onChange={(e) => setSource(e.target.value)}>{opts.map((l) => <option key={l.id} value={l.id}>{pretty(l.id)}</option>)}</select></label>
+          <label>Destination<select value={dst} onChange={(e) => setDest(e.target.value)}>{opts.map((l) => <option key={l.id} value={l.id}>{pretty(l.id)}</option>)}</select></label>
           <label>Filter<select value={status} onChange={(e) => setStatus(e.target.value)}><option value="">All</option>{Object.keys(order).map((s) => <option key={s}>{s}</option>)}</select></label>
           <button className="btn primary" type="submit" disabled={!!err} title={err ?? "Create task"}>+ Create task</button>
           {err && <span className="form-err">{err}</span>}

@@ -18,7 +18,7 @@ import { EditorMap2D } from "./EditorMap2D";
 const TABS: Array<[WorkspaceTab, string]> = [["3D", "3D VIEW"], ["2D", "2D VIEW"]];
 const isEditable = (t: EventTarget | null) => t instanceof HTMLElement && (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA" || t.isContentEditable);
 
-function Header({ children, right }: { children?: ReactNode; right?: ReactNode }) {
+function Header({ id, children, right }: { id: string; children?: ReactNode; right?: ReactNode }) {
   return (
     <header className="topbar">
       <div className="brand"><span className="ai">Twin</span><span>House</span><span className="brand-sub">Workspace</span></div>
@@ -26,7 +26,7 @@ function Header({ children, right }: { children?: ReactNode; right?: ReactNode }
       <div className="topbar-right">
         {right}
         <button className="tb-btn" onClick={() => navigate({ page: "scenarios" })} title="Back to the twin list">‹ Twins</button>
-        <button className="tb-btn" onClick={() => navigate({ page: "console" })} title="Operations console (live simulation)">Console</button>
+        <button className="tb-btn" onClick={() => navigate({ page: "console", id })} title="Operations console of this twin (live simulation)">Console</button>
       </div>
     </header>
   );
@@ -84,19 +84,19 @@ export function WorkspacePage({ id }: { id: string }) {
 
   if (activeState === "error") {
     return (
-      <div className="page"><Header />
+      <div className="page"><Header id={id} />
         <div className="page-body narrow"><div className="error-box">Cannot load this twin: {activeError}<button className="btn" onClick={() => void open(id)}>Retry</button></div></div>
       </div>
     );
   }
-  if (!active) return <div className="page"><Header /><div className="page-body narrow"><p className="hint">Loading twin…</p></div></div>;
+  if (!active) return <div className="page"><Header id={id} /><div className="page-body narrow"><p className="hint">Loading twin…</p></div></div>;
 
   const { length: L, width: W, height: H } = active.size;
   const saveText = saveState === "saved" ? "Saved" : saveState === "saving" ? "Saving…" : "Save failed — retry";
   const saveTitle = saveState === "error" ? `${saveError ?? "save failed"} — click to retry` : "Every change is saved to the backend automatically";
   return (
     <div className="page">
-      <Header right={<span className={"save-state " + saveState} title={saveTitle} role={saveState === "error" ? "button" : undefined} onClick={saveState === "error" ? retrySave : undefined}>{saveText}</span>}>
+      <Header id={id} right={<span className={"save-state " + saveState} title={saveTitle} role={saveState === "error" ? "button" : undefined} onClick={saveState === "error" ? retrySave : undefined}>{saveText}</span>}>
         <input className="ws-name" key={active.name} defaultValue={active.name} maxLength={80} aria-label="Twin name" title="Twin name — click to rename"
           onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== active.name) renameScenario(v); else e.target.value = active.name; }}
           onKeyDown={(e) => { if (e.key === "Escape") e.currentTarget.value = active.name; if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur(); }} />

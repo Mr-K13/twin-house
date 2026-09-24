@@ -99,14 +99,20 @@ export function percText(r: RobotState): string {
   return `${P.state} · ahead ${P.ahead_m.toFixed(1)} m${who}`;
 }
 
+/** A twin without cameras has no live view */
 export function LiveCameraPanel() {
+  return layout.cameras.length ? <LiveCamera /> : <Panel title="Camera"><p className="hint">This twin has no cameras.</p></Panel>;
+}
+
+function LiveCamera() {
   const active = useStore((s) => s.activeCamera);
   const setActive = useStore((s) => s.setActiveCamera);
   const camStatus = useStore((s) => s.twin.cameras);
   const cam = layout.cameras.find((c) => c.id === active) ?? layout.cameras[0];
   const isDock = cam.id.startsWith("CAM-DOCK");
-  const groups: Array<[string, string]> = [["A", "A"], ["B", "B"], ["C", "C"], ["D", "D"], ["M", "F2"], ["DOCK", "Dock"]];
   const camsOf = (g: string) => layout.cameras.filter((c) => (g === "DOCK" ? c.id.startsWith("CAM-DOCK") : !c.id.startsWith("CAM-DOCK") && c.zone === g));
+  // Zone tabs of the Main Warehouse; a twin (one zone) shows only the tabs that have cameras
+  const groups = ([["A", "A"], ["B", "B"], ["C", "C"], ["D", "D"], ["M", "F2"], ["DOCK", "Dock"]] as Array<[string, string]>).filter(([g]) => camsOf(g).length > 0);
   const curGroup = isDock ? "DOCK" : cam.zone;
   const zoneCams = camsOf(curGroup);
   const offline = camStatus[cam.id]?.status === "OFFLINE";

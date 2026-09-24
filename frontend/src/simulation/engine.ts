@@ -335,9 +335,13 @@ export class SimEngine {
     const pick = <T,>(a: T[]) => a[Math.floor(this.rng() * a.length)];
     const r = this.rng();
     const pr: TaskPriority = r < 0.15 ? "HIGH" : r < 0.18 ? "CRITICAL" : "NORMAL";
-    if (r < 0.55) this.createTask({ type: "PICK", priority: pr, source: pick(shelves).id, destination: pick(packs).id });
-    else if (r < 0.8) this.createTask({ type: "REPLENISH", priority: pr, source: pick(inbound).id, destination: pick(shelves).id });
-    else this.createTask({ type: "TRANSPORT", priority: pr, source: pick(packs).id, destination: pick(outbound).id });
+    // A user-built twin may lack a pool (no dock, no station...): only the task types whose source and destination both exist are generated
+    const can = { PICK: shelves.length > 0 && packs.length > 0, REPLENISH: inbound.length > 0 && shelves.length > 0, TRANSPORT: packs.length > 0 && outbound.length > 0 };
+    const type = r < 0.55 ? "PICK" : r < 0.8 ? "REPLENISH" : "TRANSPORT";
+    const chosen = can[type] ? type : (["PICK", "REPLENISH", "TRANSPORT"] as const).find((t) => can[t]);
+    if (chosen === "PICK") this.createTask({ type: "PICK", priority: pr, source: pick(shelves).id, destination: pick(packs).id });
+    else if (chosen === "REPLENISH") this.createTask({ type: "REPLENISH", priority: pr, source: pick(inbound).id, destination: pick(shelves).id });
+    else if (chosen === "TRANSPORT") this.createTask({ type: "TRANSPORT", priority: pr, source: pick(packs).id, destination: pick(outbound).id });
   }
 
   /** Fleet Manager (simplified): a weighted score of distance + battery + workload + congestion + health, with an explainable candidate list */

@@ -95,12 +95,12 @@ The default is Medium. If the FPS is less than 30, first change to Low (the TopB
 
 ## Twin setup and workspace editor
 
-A second workflow next to the operations console: build a warehouse of your own size from the asset catalog. The UI calls such a
-warehouse a **twin**; code, routes and API keep the name *scenario* (`#/scenarios`, `/api/scenarios`, `src/scenario/`). Nothing in the live simulation,
-the engine, the WebSocket protocol or the console changes; the console only gains a **Setup** button in the top bar.
+The app opens on the twin list. A **twin** is a warehouse; code and API keep the name *scenario* (`/api/scenarios`, `src/scenario/`).
+The bundled Main Warehouse (`warehouse_layout.json`) is the **built-in** twin; every other twin is built from the asset catalog at a size of your own.
 
-- **Routes** (hash router in `src/router.ts`, no dependency): `#/` console (default), `#/scenarios` list, `#/workspace/<id>` editor. A reload keeps the page; an unknown id redirects to the list.
-- **Setup page**: the saved twins from `GET /api/scenarios` (name, L × W × H, asset count, last update) with **Open** / **Delete**, and **New Twin**
+- **Routes** (hash router in `src/router.ts`, no dependency): `#/` twin list (default; the old `#/scenarios` link lands there too), `#/workspace/<id>` editor,
+  `#/console/<id>` operations console of one twin (`main-warehouse` is the built-in one). A reload keeps the page; an unknown twin id redirects to the list.
+- **Setup page**: the built-in Main Warehouse first (read-only: **Console** only), then the saved twins from `GET /api/scenarios` (name, L × W × H, asset count, last update) with **Console** / **Open** / **Delete**, and **New Twin**
   (name + Length / Width / Height in metres; Length and Width 5–500, Height 3–40; the same bounds the backend enforces). Creating posts to the backend and opens the workspace.
   When the backend is unreachable the page shows an error state with **Retry**.
 - **Workspace**: left = all 11 catalog asset types (`src/scenario/assetDefs.tsx` maps each one onto the procedural 3D model the console already uses);
@@ -116,9 +116,18 @@ the engine, the WebSocket protocol or the console changes; the console only gain
 - **Auto-save**: every change is saved to the backend after 800 ms of inactivity (`PUT /api/scenarios/{id}`, its own 120/min rate-limit bucket); the header shows **Saved / Saving… / Save failed — retry**;
   a route change or page unload flushes a pending save, and a failed save is kept and retried on the next change, on **retry**, or when the page is opened again.
   Scenarios are shared, unauthenticated documents (like the rest of the API); two browsers editing the same scenario overwrite each other (last write wins).
-- **Non-goals**: running the simulation on a scenario, exporting to `warehouse_layout.json`, offline editing, zones / walkways / parking, undo, multi-select, drag-moving in 2D.
+- **Console of a twin**: **Console** (setup list or workspace header) opens `#/console/<id>`; **‹ Twins** in the console top bar returns to the list.
+  The built-in twin runs exactly as before (backend WebSocket, local fallback). A user twin is fetched, projected into a `WarehouseLayout` by
+  `src/scenario/projectLayout.ts`, and simulated **only by the in-browser engine** (badge **LOCAL**; What-if, Copilot and VLM need the backend and stay unavailable).
+  The projection makes these approximations: racks, stations, docks, conveyors and lifts turn by the yaw rounded to the nearest 90° (the navigation grid is axis-aligned);
+  a charger always faces −z; there is one floor and one zone (`A`, the whole floor); task locations are generated — one SHELF per ~3 m bay on each rack face with a free aisle,
+  one per station and per dock — and every access point / robot spawn moves to the nearest free cell the robots can reach. When no task can be generated
+  (no robot, or no shelf → station, inbound dock → shelf or station → outbound dock pair) the console says what the twin is missing.
+  The console reads the active layout through the live binding `layout` in `src/state/store.ts` (`setLayout` swaps it and resets the console state) and remounts per twin.
+- **Non-goals**: simulating a user twin on the backend, editing the built-in twin, multiple floors in a user twin, exporting to `warehouse_layout.json`, offline editing, zones / walkways / parking, undo, multi-select, drag-moving in 2D.
 
-Code: `src/scenario/` (types, pure model helpers, REST client, zustand store, asset definitions) and `src/components/scenario/`; tests in `tests/scenario.test.ts`.
+Code: `src/scenario/` (types, pure model helpers, layout projection, REST client, zustand store, asset definitions), `src/twin/builtin.ts` and `src/components/scenario/`;
+tests in `tests/scenario.test.ts` and `tests/projectLayout.test.ts`.
 
 ## Deployment
 

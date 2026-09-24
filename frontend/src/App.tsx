@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useStore } from "./state/store";
+import { BUNDLED_LAYOUT, setLayout, useStore } from "./state/store";
 import { TopBar } from "./components/shell/TopBar";
 import { useSimulationRunner } from "./simulation/runner";
 import { Viewport } from "./components/views/Viewport";
@@ -10,9 +10,13 @@ import { ScenariosDrawer } from "./components/ops/ScenariosDrawer";
 import { OpsDrawer } from "./components/ops/OpsDrawer";
 import { Modals } from "./components/ops/Modals";
 import { WhatIfDrawer } from "./components/ops/WhatIfDrawer";
-import { useHashRoute } from "./router";
+import { navigate, useHashRoute } from "./router";
 import { ScenariosPage } from "./components/scenario/ScenariosPage";
 import { WorkspacePage } from "./components/scenario/WorkspacePage";
+import { BUILTIN_TWIN_ID } from "./twin/builtin";
+import { ApiError, getScenario } from "./scenario/api";
+import { useScenarioStore } from "./scenario/store";
+import { projectLayout, simReadiness } from "./scenario/projectLayout";
 
 /**
  * The layout design base is 1536×860 CSS px. On a smaller window, scale the full layout down so that all panels stay visible
@@ -62,10 +66,22 @@ function NarrowScreenGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/** Shown in a user twin's console when no task can be generated (no robot, or no task type with both ends) */
+function IdleHint({ missing }: { missing: string[] }) {
+  const [open, setOpen] = useState(true);
+  if (!open || missing.length === 0) return null;
+  return (
+    <div className="sim-hint" role="status">
+      Robots stay idle: this twin needs {missing.join(", ")}. Add them in the Workspace.
+      <button className="icon-btn" title="Dismiss" onClick={() => setOpen(false)}>×</button>
+    </div>
+  );
+}
+
 /** The simulation runner is inside the gate: while the phone notice page shows, the WebSocket and the local engine do not start and do not waste CPU */
-function Console() {
+function Console({ online, missing }: { online: boolean; missing: string[] }) {
   useFitScale();
-  useSimulationRunner();
+  useSimulationRunner({ online });
   return (
     <div className="shell">
       <TopBar />
@@ -93,16 +109,63 @@ function Console() {
       <WhatIfDrawer />
       <Modals />
       <Notice />
+      <IdleHint missing={missing} />
     </div>
   );
 }
 
-/** Hash routes: `#/` console, `#/scenarios`, `#/workspace/<id>`. The setup pages render outside Console, so no WebSocket or engine loop runs while editing a scenario. */
+type ConsoleLoad = { state: "loading" } | { state: "ready"; online: boolean; missing: string[] } | { state: "error"; message: string };
+
+/**
+ * Console of one twin (#/console/<id>). The built-in twin shows the bundled layout, simulated by the backend (WebSocket, local fallback).
+ * A user twin is fetched, projected into a layout (scenario/projectLayout.ts) and simulated by the local engine only.
+ */
+function ConsolePage({ id }: { id: string }) {
+  const [load, setLoad] = useState<ConsoleLoad>({ state: "loading" });
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    if (id === BUILTIN_TWIN_ID) { setLayout(BUNDLED_LAYOUT); setLoad({ state: "ready", online: true, missing: [] }); return; }
+    let alive = true;
+    setLoad({ state: "loading" });
+    (async () => {
+      await useScenarioStore.getState().flushSave();   // coming from the Workspace: its last edit is saved before the GET
+      try {
+        const twin = await getScenario(id);
+        if (!alive) return;
+        const l = projectLayout(twin);
+        setLayout(l);
+        setLoad({ state: "ready", online: false, missing: simReadiness(l) });
+      } catch (e) {
+        if (!alive) return;
+        if (e instanceof ApiError && e.status === 404) navigate({ page: "scenarios" });
+        else setLoad({ state: "error", message: e instanceof Error ? e.message : String(e) });
+      }
+    })();
+    return () => { alive = false; };
+  }, [id, attempt]);
+
+  if (load.state === "ready") return <Console online={load.online} missing={load.missing} />;
+  return (
+    <div className="page">
+      <header className="topbar">
+        <div className="brand"><span className="ai">Twin</span><span>House</span><span className="brand-sub">Console</span></div>
+        <div className="topbar-right"><button className="tb-btn" onClick={() => navigate({ page: "scenarios" })} title="Back to the twin list">‹ Twins</button></div>
+      </header>
+      <div className="page-body narrow">
+        {load.state === "loading" ? <p className="hint">Loading twin…</p>
+          : <div className="error-box">Cannot load this twin: {load.message}<button className="btn" onClick={() => setAttempt((n) => n + 1)}>Retry</button></div>}
+      </div>
+    </div>
+  );
+}
+
+/** Hash routes: `#/` twin setup list, `#/workspace/<id>`, `#/console/<id>`. The setup pages render outside Console, so no WebSocket or engine loop runs while editing a twin.
+ *  The console is keyed by twin id: switching twins remounts it, so the scene, memos and the simulation runner start from the new layout. */
 function Routed() {
   const route = useHashRoute();
-  if (route.page === "scenarios") return <ScenariosPage />;
   if (route.page === "workspace") return <WorkspacePage id={route.id} />;
-  return <Console />;
+  if (route.page === "console") return <ConsolePage key={route.id} id={route.id} />;
+  return <ScenariosPage />;
 }
 
 export default function App() {

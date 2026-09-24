@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import * as THREE from "three";
-import { layout } from "../../state/store";
+import { BUNDLED_LAYOUT, layout } from "../../state/store";
 import type { LayoutDock } from "../../layout/types";
 
 /** Procedural concrete floor texture (noise + a 1 m grid, repeating every 8 m) sized for a W × D floor; shared with the scenario workspace editor */
@@ -31,7 +31,8 @@ export function WarehouseShell({ lite = false }: { lite?: boolean }) {
   []);
 
   const aisleLines = useMemo(() => {
-    // Yellow markings for the central aisle and the aisle in front of the docks
+    // Yellow markings for the central aisle and the aisle in front of the docks (drawn for the Main Warehouse's aisles only)
+    if (layout !== BUNDLED_LAYOUT) return [];
     const segs: [number, number, number, number][] = [
       [46.2, 10, 46.2, 62], [53.8, 10, 53.8, 62], [0, 9.8, W, 9.8], [0, 8.2, W, 8.2],
     ];
@@ -90,7 +91,7 @@ export function WarehouseShell({ lite = false }: { lite?: boolean }) {
       {/* Dock doors */}
       {layout.docks.map((d) => <DockModel key={d.id} d={d} />)}
       {/* Ceiling lights */}
-      {!lite && Array.from({ length: 4 }, (_, r) => Array.from({ length: 6 }, (_, c) => (
+      {!lite && Array.from({ length: 4 }, (_, r) => Array.from({ length: 6 }, (_, c) => 10 + c * 16 < W && 9 + r * 17 < D && (
         <mesh key={`${r}-${c}`} position={[10 + c * 16, H - 1, 9 + r * 17]}>
           <boxGeometry args={[3, 0.12, 0.5]} />
           <meshBasicMaterial color="#dbeafe" />
@@ -100,10 +101,17 @@ export function WarehouseShell({ lite = false }: { lite?: boolean }) {
   );
 }
 
-/** Loading dock on the north wall: door panel tinted by kind, header light bar, and a truck trailer parked outside */
+/**
+ * Loading dock: door panel tinted by kind, header light bar, and a truck trailer parked outside. The door sits at `door` and faces away from the
+ * apron `rect` (a north-wall dock of warehouse_layout.json looks towards −z; a twin's dock can face any wall).
+ */
 export function DockModel({ d }: { d: LayoutDock }) {
+  const vx = d.door[0] - (d.rect[0] + d.rect[2]) / 2, vz = d.door[1] - (d.rect[1] + d.rect[3]) / 2;
+  // three.js rotation-y maps the model's outward −z onto (−sin θ, −cos θ): pick θ so it points from the apron centre through the door
+  const yaw = vx === 0 && vz === 0 ? 0 : Math.atan2(-vx, -vz);
   return (
-    <group position={[d.door[0], 0, 0.25]}>
+    <group position={[d.door[0], 0, d.door[1]]} rotation-y={yaw}>
+      <group position-z={0.25}>
       <mesh position={[0, 2.4, 0]}>
         <boxGeometry args={[5.5, 4.8, 0.3]} />
         <meshStandardMaterial color="#0e1a2b" roughness={0.6} metalness={0.4} emissive={d.kind === "INBOUND" ? "#14532d" : "#164e63"} emissiveIntensity={0.6} />
@@ -117,6 +125,7 @@ export function DockModel({ d }: { d: LayoutDock }) {
         <boxGeometry args={[2.6, 3.2, 9]} />
         <meshStandardMaterial color="#d9dee7" roughness={0.5} metalness={0.2} />
       </mesh>
+      </group>
     </group>
   );
 }

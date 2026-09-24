@@ -4,7 +4,7 @@
  */
 import { useState, useEffect } from "react";
 import { useFocusTrap } from "../ui/useFocusTrap";
-import { layout, useStore } from "../../state/store";
+import { BUNDLED_LAYOUT, layout, useStore } from "../../state/store";
 import { simControl } from "../../simulation/runner";
 import type { ScenarioInjection } from "../../schema/twin_state";
 
@@ -26,6 +26,10 @@ export function ScenariosDrawer() {
 
   const fire = (inj: ScenarioInjection) => simControl.inject(inj);
   const robots = Object.values(twin.robots);
+  // The defaults are Main Warehouse ids; another twin falls back to its first robot / conveyor / camera / lift / zone
+  const pick = (want: string, ids: string[]) => (ids.includes(want) ? want : ids[0] ?? "");
+  const robotId = pick(robot, robots.map((r) => r.id)), conveyorId = pick(conveyor, layout.conveyors.map((c) => c.id));
+  const cameraId = pick(camera, layout.cameras.map((c) => c.id)), liftId = pick(lift, layout.lifts.map((l) => l.id)), zoneId = pick(zone, layout.zones.map((z) => z.id));
   // Currently active injections (derived from state)
   const active: Array<{ kind: ScenarioInjection["kind"]; target: string; label: string }> = [
     ...robots.filter((r) => r.status === "OFFLINE").map((r) => ({ kind: "ROBOT_FAILURE" as const, target: r.id, label: `${r.id} offline` })),
@@ -43,42 +47,44 @@ export function ScenariosDrawer() {
         <p className="hint">Inject failures into the LIVE simulation and watch the Fleet Manager, A* planner and KPIs react. Each row maps to a demo scenario.</p>
 
         <Row title="Robot Failure" demo="05" desc="Robot goes offline; its task is re-queued to another robot">
-          <select value={robot} onChange={(e) => setRobot(e.target.value)}>{robots.map((r) => <option key={r.id} value={r.id}>{r.id} · {r.status.toLowerCase()} · {Math.round(r.battery)}%</option>)}</select>
-          <button className="btn danger" onClick={() => fire({ kind: "ROBOT_FAILURE", robot_id: robot })}>Fail</button>
+          <select value={robotId} onChange={(e) => setRobot(e.target.value)}>{robots.map((r) => <option key={r.id} value={r.id}>{r.id} · {r.status.toLowerCase()} · {Math.round(r.battery)}%</option>)}</select>
+          <button className="btn danger" disabled={!robotId} onClick={() => fire({ kind: "ROBOT_FAILURE", robot_id: robotId })}>Fail</button>
         </Row>
         <Row title="Low Battery" demo="02" desc="Set battery to 8% — watch task hand-off and charger scheduling">
-          <select value={robot} onChange={(e) => setRobot(e.target.value)}>{robots.map((r) => <option key={r.id} value={r.id}>{r.id}</option>)}</select>
-          <button className="btn warn" onClick={() => fire({ kind: "ROBOT_BATTERY_SET", robot_id: robot, battery: 8 })}>Set 8%</button>
+          <select value={robotId} onChange={(e) => setRobot(e.target.value)}>{robots.map((r) => <option key={r.id} value={r.id}>{r.id}</option>)}</select>
+          <button className="btn warn" disabled={!robotId} onClick={() => fire({ kind: "ROBOT_BATTERY_SET", robot_id: robotId, battery: 8 })}>Set 8%</button>
         </Row>
         <Row title="Conveyor Failure" demo="04" desc="Conveyor stops; unloading at the station it feeds takes 4× longer → bottleneck">
-          <select value={conveyor} onChange={(e) => setConveyor(e.target.value)}>{layout.conveyors.map((c) => <option key={c.id} value={c.id}>{c.name} → {c.feeds}</option>)}</select>
-          <button className="btn danger" onClick={() => fire({ kind: "CONVEYOR_FAILURE", conveyor_id: conveyor })}>Stop</button>
+          <select value={conveyorId} onChange={(e) => setConveyor(e.target.value)}>{layout.conveyors.map((c) => <option key={c.id} value={c.id}>{c.name}{c.feeds ? ` → ${c.feeds}` : ""}</option>)}</select>
+          <button className="btn danger" disabled={!conveyorId} onClick={() => fire({ kind: "CONVEYOR_FAILURE", conveyor_id: conveyorId })}>Stop</button>
         </Row>
         <Row title="Human Intrusion" demo="03" desc="A worker enters the zone → zone blocked → robots re-plan">
-          <select value={zone} onChange={(e) => setZone(e.target.value)}>{layout.zones.map((z) => <option key={z.id} value={z.id}>Zone {z.id}</option>)}</select>
+          <select value={zoneId} onChange={(e) => setZone(e.target.value)}>{layout.zones.map((z) => <option key={z.id} value={z.id}>Zone {z.id}</option>)}</select>
           <input type="number" min={10} max={600} value={duration} onChange={(e) => setDuration(+e.target.value)} title="seconds" /><span className="unit">s</span>
-          <button className="btn warn" onClick={() => fire({ kind: "HUMAN_INTRUSION", zone_id: zone, duration_ticks: duration * 10 })}>Inject</button>
+          <button className="btn warn" onClick={() => fire({ kind: "HUMAN_INTRUSION", zone_id: zoneId, duration_ticks: duration * 10 })}>Inject</button>
         </Row>
         <Row title="Traffic Congestion" demo="06" desc="Speed limit + higher path cost inside the zone → dynamic re-routing">
-          <select value={zone} onChange={(e) => setZone(e.target.value)}>{layout.zones.map((z) => <option key={z.id} value={z.id}>Zone {z.id}</option>)}</select>
+          <select value={zoneId} onChange={(e) => setZone(e.target.value)}>{layout.zones.map((z) => <option key={z.id} value={z.id}>Zone {z.id}</option>)}</select>
           <input type="range" min={0.2} max={1} step={0.1} value={level} onChange={(e) => setLevel(+e.target.value)} title="level" /><span className="unit">{Math.round(level * 100)}%</span>
-          <button className="btn warn" onClick={() => fire({ kind: "TRAFFIC_CONGESTION", zone_id: zone, level, duration_ticks: duration * 10 })}>Inject</button>
+          <button className="btn warn" onClick={() => fire({ kind: "TRAFFIC_CONGESTION", zone_id: zoneId, level, duration_ticks: duration * 10 })}>Inject</button>
         </Row>
         <Row title="Camera Failure" demo="07" desc="Camera goes offline; CCTV subsystem degraded">
-          <select value={camera} onChange={(e) => setCamera(e.target.value)}>{layout.cameras.map((c) => <option key={c.id} value={c.id}>{c.id}</option>)}</select>
-          <button className="btn" onClick={() => fire({ kind: "CAMERA_OFFLINE", camera_id: camera })}>Offline</button>
+          <select value={cameraId} onChange={(e) => setCamera(e.target.value)}>{layout.cameras.map((c) => <option key={c.id} value={c.id}>{c.id}</option>)}</select>
+          <button className="btn" disabled={!cameraId} onClick={() => fire({ kind: "CAMERA_OFFLINE", camera_id: cameraId })}>Offline</button>
         </Row>
         <Row title="Lift Fault" demo="12" desc="Freight lift out of service — waiting robots reroute to the other lift; a rider stays aboard until recovery">
-          <select value={lift} onChange={(e) => setLift(e.target.value)}>{layout.lifts.map((l) => <option key={l.id} value={l.id}>{l.id}</option>)}</select>
-          <button className="btn danger" onClick={() => fire({ kind: "LIFT_FAULT", lift_id: lift })}>Fault</button>
+          <select value={liftId} onChange={(e) => setLift(e.target.value)}>{layout.lifts.map((l) => <option key={l.id} value={l.id}>{l.id}</option>)}</select>
+          <button className="btn danger" disabled={!liftId} onClick={() => fire({ kind: "LIFT_FAULT", lift_id: liftId })}>Fault</button>
         </Row>
         <Row title="Task Burst" demo="—" desc="Release many tasks at once — watch scheduling and congestion">
           <input type="number" min={1} max={30} value={burst} onChange={(e) => setBurst(+e.target.value)} /><span className="unit">tasks</span>
           <button className="btn" onClick={() => fire({ kind: "TASK_BURST", count: burst, priority: "HIGH" })}>Inject</button>
         </Row>
-        <Row title="Demo 10 · Compound" demo="10" desc="All at once: R07 low battery + human in Zone B + Conveyor #03 failure">
-          <button className="btn danger" onClick={() => { fire({ kind: "ROBOT_BATTERY_SET", robot_id: "R07", battery: 8 }); fire({ kind: "HUMAN_INTRUSION", zone_id: "B", duration_ticks: 600 }); fire({ kind: "CONVEYOR_FAILURE", conveyor_id: "CV03" }); }}>Run all three</button>
-        </Row>
+        {layout === BUNDLED_LAYOUT && (
+          <Row title="Demo 10 · Compound" demo="10" desc="All at once: R07 low battery + human in Zone B + Conveyor #03 failure">
+            <button className="btn danger" onClick={() => { fire({ kind: "ROBOT_BATTERY_SET", robot_id: "R07", battery: 8 }); fire({ kind: "HUMAN_INTRUSION", zone_id: "B", duration_ticks: 600 }); fire({ kind: "CONVEYOR_FAILURE", conveyor_id: "CV03" }); }}>Run all three</button>
+          </Row>
+        )}
 
         <h4 className="drawer-sub">Active ({active.length})</h4>
         {active.length === 0 && <div className="hint">None — everything nominal.</div>}

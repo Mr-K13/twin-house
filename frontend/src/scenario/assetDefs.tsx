@@ -196,8 +196,8 @@ const dock = define<LayoutDock>({
     const d = num(i.params.depth, 4);
     return { id: i.id, kind: str(i.params.kind, "INBOUND") as LayoutDock["kind"], zone: ZONE, rect: [-DOCK_W / 2, -d / 2, DOCK_W / 2, d / 2], door: [0, -d / 2] };
   },
-  // DockModel draws its door panel at z ≈ 0 and the truck trailer outside (−z): shift it so the door sits on the −z edge of the apron footprint
-  render: (row, inst) => <group position={[0, 0, -num(inst.params.depth, 4) / 2]}><DockModel d={row} /></group>,
+  // DockModel places the door panel at `door` (the −z edge of the apron) with the truck trailer outside
+  render: (row) => <DockModel d={row} />,
 });
 
 const person = (i: AssetInstance, kind: PersonState["kind"]): PersonState => ({ id: i.id, kind, position: [0, 0, 0], heading: 0, zone: null, floor: 1, expires_tick: null });

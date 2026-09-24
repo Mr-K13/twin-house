@@ -1,23 +1,25 @@
 /**
  * Asset Catalog modal: the list of equipment types on the left; for the selected type, the parameter schema,
  * a 3D preview of one instance (CatalogPreview), the behavioural characteristics (imported from the engine constants), and a sortable table of every instance in the layout.
- * All data is static and bundled (see catalog/assetTypes.ts), so this works offline / LOCAL as well as online.
+ * The instances are those of the twin the console shows (catalogFor(layout), see catalog/assetTypes.ts); nothing is fetched, so this works offline / LOCAL as well as online.
  */
 import { useMemo, useState } from "react";
-import { ASSET_TYPES, type Cell } from "../../catalog/assetTypes";
+import { catalogFor, type Cell } from "../../catalog/assetTypes";
+import { layout } from "../../state/store";
 import { Head } from "../ui/primitives";
 import { CatalogPreview } from "./CatalogPreview";
 
 const cmp = (a: Cell, b: Cell) => (typeof a === "number" && typeof b === "number" ? a - b : String(a).localeCompare(String(b), undefined, { numeric: true }));
 
 export function CatalogModal() {
-  const [sel, setSel] = useState(ASSET_TYPES[0].id);
+  const types = catalogFor(layout);
+  const [sel, setSel] = useState(types[0].id);
   const [sort, setSort] = useState<{ key: string; dir: 1 | -1 }>({ key: "id", dir: 1 });
   const [q, setQ] = useState("");
   /** Instance shown in the 3D preview (row click); null = the first instance of the type */
   const [previewId, setPreviewId] = useState<string | null>(null);
-  const entry = ASSET_TYPES.find((t) => t.id === sel) ?? ASSET_TYPES[0];
-  const total = ASSET_TYPES.reduce((n, t) => n + t.instances.length, 0);
+  const entry = types.find((t) => t.id === sel) ?? types[0];
+  const total = types.reduce((n, t) => n + t.instances.length, 0);
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
     const list = needle ? entry.rows.filter((r) => Object.values(r.cells).some((c) => String(c).toLowerCase().includes(needle))) : [...entry.rows];
@@ -31,10 +33,10 @@ export function CatalogModal() {
   const variants = entry.variants.filter((v) => v.counts.length > 1);
   return (
     <>
-      <Head title="Asset Catalog"><span className="hint" style={{ margin: 0 }}>{ASSET_TYPES.length} types · {total} instances in the current layout</span></Head>
+      <Head title="Asset Catalog"><span className="hint" style={{ margin: 0 }}>{types.length} types · {total} instances in the current layout</span></Head>
       <div className="catalog-body">
         <nav className="catalog-nav wi-list" aria-label="Asset types">
-          {ASSET_TYPES.map((t) => (
+          {types.map((t) => (
             <button key={t.id} className={"wi-item" + (t.id === sel ? " on" : "")} onClick={() => pick(t.id)} aria-pressed={t.id === sel}>
               <span>{t.label}</span><span className="count">{t.instances.length}</span>
             </button>

@@ -7,7 +7,13 @@ export type ViewTab = "3D" | "MAP" | "TRAFFIC" | "HEATMAP";
 export type Quality = "low" | "medium" | "high";
 export type SceneTool = "select" | "pan" | "paths" | "labels" | "measure";
 
-export const layout = layoutJson as unknown as WarehouseLayout;
+/** The bundled Main Warehouse layout (the built-in twin) */
+export const BUNDLED_LAYOUT = layoutJson as unknown as WarehouseLayout;
+/**
+ * The layout the console is showing. An ES live binding: every render-time `layout.x` reads the active twin's layout after setLayout().
+ * The console remounts per twin (ConsolePage key), so memos and the simulation runner rebuild from the new value.
+ */
+export let layout: WarehouseLayout = BUNDLED_LAYOUT;
 export type ModalKind = null | "audit" | "tasks" | "robot" | "fleet" | "catalog";
 
 interface Store {
@@ -65,9 +71,13 @@ interface Store {
   setWhatIf: (r: unknown | null) => void;
 }
 
+const indexLocations = (l: WarehouseLayout): Record<string, LayoutLocation> => Object.fromEntries(l.locations.map((x) => [x.id, x]));
+/** CAM-B01 is the Main Warehouse's default live camera; another layout starts on its first camera */
+const defaultCamera = (l: WarehouseLayout) => (l.cameras.some((c) => c.id === "CAM-B01") ? "CAM-B01" : l.cameras[0]?.id ?? "");
+
 /** Empty initial TwinState (the engine snapshot replaces it as soon as the runner mounts) */
 const EMPTY: TwinState = {
-  schema_version: "1.0", layout_id: layout.id,
+  schema_version: "1.0", layout_id: BUNDLED_LAYOUT.id,
   sim: { tick: 0, tick_ms: 100, speed: 1, mode: "PAUSED", seed: 42, baseline_snapshot_id: null },
   robots: {}, tasks: {}, lifts: {}, zones: {}, conveyors: {}, cameras: {}, sensors: {}, people: {}, alerts: {}, recent_events: [], recent_decisions: [],
   kpi: { tick: 0, fleet: { total: 0, active: 0, charging: 0, idle: 0, warning: 0, error: 0, offline: 0 }, operation: { throughput_per_min: 0, completed_today: 0, completed_target: 150, pending: 0, ongoing: 0, avg_task_time_s: 0, on_time_rate: 1, avg_utilization: 0 }, efficiency: { avg_travel_distance_m: 0, avg_wait_time_s: 0, congestion_index: 0, energy_kwh: 0 }, throughput_series: [], lifts: { trips: 0, utilization: 0, avg_wait_s: 0, faults: 0 } },
@@ -95,7 +105,7 @@ export const useStore = create<Store>((set) => ({
   setHeat: (l) => set((st) => (l === null ? { heat: null } : { heat: { ...(st.heat ?? {}), [`${l.kind}:${l.floor ?? 1}`]: l } })),
   setSpeed: (speed) => set({ speed, paused: speed === 0 }),
   setPaused: (paused) => set({ paused }),
-  locations: Object.fromEntries(layout.locations.map((l) => [l.id, l])),
+  locations: indexLocations(BUNDLED_LAYOUT),
   selectedRobot: null,
   viewTab: "3D",
   quality: "medium",
@@ -103,7 +113,7 @@ export const useStore = create<Store>((set) => ({
   showLabels: true,
   tool: "select",
   focusTarget: null,
-  activeCamera: "CAM-B01",
+  activeCamera: defaultCamera(BUNDLED_LAYOUT),
   select: (id) => set(id ? { selectedRobot: id, selectedLift: null } : { selectedRobot: id }),
   setViewTab: (viewTab) => set({ viewTab }),
   setQuality: (quality) => set({ quality }),
@@ -122,7 +132,21 @@ export const STATUS_COLOR: Record<string, string> = {
 export const SEVERITY_COLOR: Record<string, string> = {
   INFO: "#3b82f6", LOW: "#3b82f6", MEDIUM: "#3b82f6", HIGH: "#eab308", CRITICAL: "#ef4444",
 };
-export const ZONE_COLOR = Object.fromEntries(layout.zones.map((z) => [z.id, z.color]));
+/** Zone id → color of the active layout (the same object for its whole life; setLayout refills it) */
+export const ZONE_COLOR: Record<string, string> = {};
+const fillZoneColors = () => { for (const k of Object.keys(ZONE_COLOR)) delete ZONE_COLOR[k]; for (const z of layout.zones) ZONE_COLOR[z.id] = z.color; };
+fillZoneColors();
+
+/** Enter a twin's console: swaps the live binding and clears every piece of console state left from the previous visit */
+export function setLayout(next: WarehouseLayout): void {
+  layout = next;
+  fillZoneColors();
+  useStore.setState({
+    twin: { ...EMPTY, layout_id: next.id }, locations: indexLocations(next), heat: null, whatif: null,
+    selectedRobot: null, selectedLift: null, focusTarget: null, activeFloor: "all", activeCamera: defaultCamera(next),
+    drawer: null, modal: null, notice: null, source: "connecting",
+  });
+}
 
 /** Simulation clock: tick 0 = 08:00:00 */
 export const SIM_START_S = 8 * 3600;

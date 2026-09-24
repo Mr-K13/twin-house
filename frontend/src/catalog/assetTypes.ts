@@ -3,9 +3,10 @@
  *  - Parameter schema: adapted from layout/types.ts and docs/layout/warehouse_layout_format.md.
  *  - Characteristics: every value is imported from SIM / THRESHOLDS / LIFT_SHAFT / TASK_RULES / the layout. No number is restated here,
  *    so the catalog cannot drift from the engine.
- *  - Instances: read from the bundled warehouse_layout.json (people: the decorative placements in scene/People.tsx); cells and variant counts are computed once at module load.
+ *  - Instances: read from a layout — `ASSET_TYPES` from the bundled warehouse_layout.json (people: the decorative placements in scene/People.tsx),
+ *    `catalogFor(layout)` from any layout, such as a twin's projection shown in the console. Cells and variant counts are computed once per layout.
  */
-import { layout } from "../state/store";
+import { BUNDLED_LAYOUT } from "../state/store";
 import type { WarehouseLayout, LayoutRack, LayoutSpawnRobot, LayoutConveyor, LayoutStation, LayoutCharging, LayoutLift, LayoutCamera, LayoutSensor, LayoutDock, P2, P3, Rect } from "../layout/types";
 import { SIM, ROBOT_DEFAULTS, CONVEYOR_FAULT_DWELL } from "../simulation/engine";
 import { THRESHOLDS } from "../schema/twin_state";
@@ -17,7 +18,7 @@ import type { PersonState } from "../schema/twin_state";
 export interface SchemaField { name: string; type: string; unit?: string; description: string; optional?: boolean }
 export interface Characteristic { label: string; value: string | number; unit?: string; source: string }
 export type Cell = string | number;
-export interface Column<T> { key: string; label: string; get: (row: T) => Cell }
+export interface Column<T> { key: string; label: string; get: (row: T, l: WarehouseLayout) => Cell }
 export interface Variant<T> { label: string; key: (row: T) => Cell }
 
 /** Author-facing definition, generic in the layout row type */
@@ -25,7 +26,8 @@ export interface AssetTypeDef<T extends object> {
   id: string; label: string; description: string;
   rows: (l: WarehouseLayout) => readonly T[];
   fields: SchemaField[];
-  characteristics: Characteristic[];
+  /** A function when a value is read from the layout */
+  characteristics: Characteristic[] | ((l: WarehouseLayout) => Characteristic[]);
   columns: Column<T>[];
   variants: Variant<T>[];
 }
@@ -48,14 +50,18 @@ export function countBy<T>(rows: readonly T[], key: (r: T) => Cell): Array<{ val
   return [...m].map(([value, n]) => ({ value, n })).sort((a, b) => b.n - a.n || a.value.localeCompare(b.value, undefined, { numeric: true }));
 }
 
-export function defineType<T extends object>(d: AssetTypeDef<T>): CatalogEntry {
-  const list = d.rows(layout);
-  return {
-    id: d.id, label: d.label, description: d.description, fields: d.fields, characteristics: d.characteristics,
-    instances: list,
-    columns: d.columns.map(({ key, label }) => ({ key, label })),
-    rows: list.map((r) => ({ id: String(d.columns[0].get(r)), cells: Object.fromEntries(d.columns.map((c) => [c.key, c.get(r)])) })),
-    variants: d.variants.map((v) => ({ label: v.label, counts: countBy(list, v.key) })),
+/** Returns the entry builder for one layout */
+export function defineType<T extends object>(d: AssetTypeDef<T>): (l: WarehouseLayout) => CatalogEntry {
+  return (l) => {
+    const list = d.rows(l);
+    return {
+      id: d.id, label: d.label, description: d.description, fields: d.fields,
+      characteristics: typeof d.characteristics === "function" ? d.characteristics(l) : d.characteristics,
+      instances: list,
+      columns: d.columns.map(({ key, label }) => ({ key, label })),
+      rows: list.map((r) => ({ id: String(d.columns[0].get(r, l)), cells: Object.fromEntries(d.columns.map((c) => [c.key, c.get(r, l)])) })),
+      variants: d.variants.map((v) => ({ label: v.label, counts: countBy(list, v.key) })),
+    };
   };
 }
 
@@ -90,10 +96,10 @@ const rack = defineType<LayoutRack>({
     { name: "blocks_grid", type: "boolean", description: "true: the cells it occupies are obstacles in the navigation grid" },
     F_FLOOR,
   ],
-  characteristics: [
+  characteristics: (l) => [
     { label: "Service cells around a shelf access point", value: SIM.SERVICE_RADIUS, unit: "cells (Chebyshev)", source: "SIM.SERVICE_RADIUS" },
     { label: "Pick dwell at a shelf", value: secs(SIM.PICK_TICKS), unit: "s", source: "SIM.PICK_TICKS" },
-    { label: "SHELF locations in this layout", value: layout.locations.filter((x) => x.kind === "SHELF").length, source: "layout.locations" },
+    { label: "SHELF locations in this layout", value: l.locations.filter((x) => x.kind === "SHELF").length, source: "layout.locations" },
     { label: "Task roles of a SHELF location", value: roles("SHELF"), source: "TASK_RULES" },
   ],
   columns: [
@@ -223,7 +229,7 @@ const station = defineType<LayoutStation>({
     { key: "rect", label: "Rect", get: (r) => rect(r.rect) },
     { key: "size", label: "Size W×D m", get: (r) => rectSize(r.rect) },
     { key: "access", label: "Access point", get: (r) => p2(r.access_point) },
-    { key: "fedBy", label: "Fed by", get: (r) => layout.conveyors.find((c) => c.feeds === r.id)?.id ?? "—" },
+    { key: "fedBy", label: "Fed by", get: (r, l) => l.conveyors.find((c) => c.feeds === r.id)?.id ?? "—" },
   ],
   variants: [
     { label: "kind", key: (r) => r.kind },
@@ -384,6 +390,8 @@ const dock = defineType<LayoutDock>({
   ],
 });
 
+const people = (l: WarehouseLayout) => l.static_people ?? STATIC_PEOPLE;
+const walkwayLimit = (l: WarehouseLayout) => { const v = l.walkways.map((w) => w.speed_limit_mps); return v.length ? [...new Set(v)].join(" / ") : "—"; };
 const F_PERSON: SchemaField[] = [
   { name: "id", type: "string", description: "Unique id; an intrusion spawns H-<zone>-<tick>" },
   { name: "kind", type: "WORKER | FORKLIFT", description: "Person kind; selects the 3D model" },
@@ -393,7 +401,6 @@ const F_PERSON: SchemaField[] = [
   F_FLOOR,
   { name: "expires_tick", type: "integer | null", unit: "tick", description: "The person disappears at this tick; null = permanent" },
 ];
-const walkwayLimit = layout.walkways.map((w) => w.speed_limit_mps);
 const personCols: Column<PersonState>[] = [
   { key: "id", label: "ID", get: (p) => p.id },
   { key: "kind", label: "Kind", get: (p) => p.kind },
@@ -406,15 +413,15 @@ const personCols: Column<PersonState>[] = [
 
 const worker = defineType<PersonState>({
   id: "worker", label: "Worker", description: "Human worker in a hi-vis vest and hard hat. The placed workers stand in the maintenance area, which robots cannot enter. A HUMAN_INTRUSION injection spawns a worker inside a zone: the zone is marked BLOCKED, robots routed through it stop with OBSTACLE_DETECTED, and every robot's virtual LiDAR reports the person as a HUMAN obstacle until it expires.",
-  rows: () => STATIC_PEOPLE.filter((p) => p.kind === "WORKER"),
+  rows: (l) => people(l).filter((p) => p.kind === "WORKER"),
   fields: F_PERSON,
-  characteristics: [
+  characteristics: (l) => [
     { label: "Spawned by", value: "HUMAN_INTRUSION injection (Scenarios / What-if)", source: "engine.inject" },
     { label: "Effect on the zone", value: "BLOCKED until the last person expires; robots inside get OBSTACLE_DETECTED", source: "engine.inject / expirePeople" },
     { label: "LiDAR classification", value: "HUMAN", source: "engine.perceive" },
     { label: "Robot stops when a person is ahead within", value: SIM.PERC_STOP, unit: "m", source: "SIM.PERC_STOP" },
     { label: "Robot slows when a person is ahead within", value: SIM.PERC_SLOW, unit: "m", source: "SIM.PERC_SLOW" },
-    { label: "Robot speed limit on walkways", value: walkwayLimit.length ? [...new Set(walkwayLimit)].join(" / ") : "—", unit: "m/s", source: "layout.walkways.speed_limit_mps" },
+    { label: "Robot speed limit on walkways", value: walkwayLimit(l), unit: "m/s", source: "layout.walkways.speed_limit_mps" },
     { label: "Task roles", value: "none (people are never task locations)", source: "TASK_RULES" },
   ],
   columns: personCols,
@@ -423,7 +430,7 @@ const worker = defineType<PersonState>({
 
 const forklift = defineType<PersonState>({
   id: "forklift", label: "Forklift", description: "Manned forklift. The current simulation only places it as decoration in the maintenance area; the FORKLIFT kind is part of the people schema so a forklift intrusion can be injected the same way as a worker, with the same zone-blocking and LiDAR behaviour.",
-  rows: () => STATIC_PEOPLE.filter((p) => p.kind === "FORKLIFT"),
+  rows: (l) => people(l).filter((p) => p.kind === "FORKLIFT"),
   fields: F_PERSON,
   characteristics: [
     { label: "Body L × W × H", value: `${FORKLIFT_BODY.L} × ${FORKLIFT_BODY.W} × ${FORKLIFT_BODY.H}`, unit: "m", source: "People.FORKLIFT_BODY" },
@@ -437,4 +444,13 @@ const forklift = defineType<PersonState>({
   variants: [{ label: "floor", key: (p) => p.floor ?? 1 }],
 });
 
-export const ASSET_TYPES: readonly CatalogEntry[] = [rack, robot, conveyor, station, charging, lift, camera, sensor, dock, worker, forklift];
+const BUILDERS = [rack, robot, conveyor, station, charging, lift, camera, sensor, dock, worker, forklift];
+const cache = new WeakMap<WarehouseLayout, readonly CatalogEntry[]>();
+/** The catalog with the instances of `l` (memoised per layout object) */
+export function catalogFor(l: WarehouseLayout): readonly CatalogEntry[] {
+  let entries = cache.get(l);
+  if (!entries) { entries = BUILDERS.map((b) => b(l)); cache.set(l, entries); }
+  return entries;
+}
+/** The catalog of the bundled Main Warehouse: type metadata for the scenario editor and the reference data the catalog tests check */
+export const ASSET_TYPES: readonly CatalogEntry[] = catalogFor(BUNDLED_LAYOUT);

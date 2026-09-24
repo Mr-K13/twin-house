@@ -5,7 +5,7 @@ import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment
 import { EffectComposer, Bloom, N8AO, Vignette } from "@react-three/postprocessing";
 import * as THREE from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
-import { layout, useStore } from "../../state/store";
+import { BUNDLED_LAYOUT, layout, useStore } from "../../state/store";
 import { WarehouseShell } from "./WarehouseShell";
 import { RackInstances } from "./RackInstances";
 import { Fixtures } from "./Fixtures";
@@ -13,9 +13,10 @@ import { ZoneOverlay } from "./ZoneOverlay";
 import { Robots } from "./Robots";
 import { CameraGizmos } from "./Cameras";
 import { People } from "./People";
-import { Mezzanine, FLOOR_ELEV } from "./Mezzanine";
+import { Mezzanine, FLOOR_ELEV, Lift } from "./Mezzanine";
 
-const W = layout.size.width, D = layout.size.depth;
+/** Floor extents of the active layout (read at render time: the console remounts per twin) */
+const floorSize = () => ({ W: layout.size.width, D: layout.size.depth });
 
 /** Camera focus animation: when focusTarget changes, move the OrbitControls target smoothly */
 function CameraRig({ controls }: { controls: React.RefObject<OrbitControlsImpl> }) {
@@ -51,6 +52,7 @@ function CameraRig({ controls }: { controls: React.RefObject<OrbitControlsImpl> 
 
 function Lights({ quality }: { quality: string }) {
   const shadows = quality !== "low";
+  const { W, D } = floorSize();
   return (
     <>
       <ambientLight intensity={0.35} color="#b9c6e0" />
@@ -61,8 +63,11 @@ function Lights({ quality }: { quality: string }) {
         shadow-camera-left={-W * 0.7} shadow-camera-right={W * 0.7} shadow-camera-top={D * 0.7} shadow-camera-bottom={-D * 0.7} shadow-camera-near={10} shadow-camera-far={160}
       />
       <pointLight position={[W / 2, 10, D / 2]} intensity={0.6} color="#60a5fa" distance={80} decay={1} />
-      <pointLight position={[26, 8, 4]} intensity={1.2} color="#22c55e" distance={25} decay={1.5} />
-      <pointLight position={[74, 8, 4]} intensity={1.2} color="#22d3ee" distance={25} decay={1.5} />
+      {layout === BUNDLED_LAYOUT && <>
+        {/* Main Warehouse dock lights (inbound / outbound door rows) */}
+        <pointLight position={[26, 8, 4]} intensity={1.2} color="#22c55e" distance={25} decay={1.5} />
+        <pointLight position={[74, 8, 4]} intensity={1.2} color="#22d3ee" distance={25} decay={1.5} />
+      </>}
     </>
   );
 }
@@ -91,6 +96,7 @@ export function SceneContent({ quality, lite = false }: { quality: "low" | "medi
   const af = useStore((s) => s.activeFloor);
   const activeFloor = lite ? "all" : af;   // The lite scene for CCTV / thumbnails always shows all floors
   const f2 = layout.floors?.find((f) => f.id === 2);
+  const { W, D } = floorSize();
   return (
     <>
       <Background env={!lite} />
@@ -99,6 +105,8 @@ export function SceneContent({ quality, lite = false }: { quality: "low" | "medi
         <WarehouseShell lite={lite} />
         <RackInstances castShadow={!lite && quality !== "low"} floor={1} />
         <Fixtures lite={lite} />
+        {/* Without a mezzanine (a user twin) the lifts stand on the floor, drawn with their own travel height */}
+        {!f2 && (layout.lifts ?? []).map((l) => <Lift key={l.id} l={l} elev={l.travel_m ?? 6} lite={lite} />)}
       </group>
       {f2 && (
         <group visible={activeFloor === "all" || activeFloor === "exploded" || activeFloor === 2} position-y={activeFloor === "exploded" ? 5 : 0}>
@@ -121,6 +129,8 @@ export function Scene3D() {
   const select = useStore((s) => s.select);
   const controls = useRef<OrbitControlsImpl>(null!);
   const [fps, setFps] = useState(0);
+  const { W, D } = floorSize();
+  const k = Math.max(0.3, Math.max(W, D) / 100);   // camera distance scales with the floor (1 for the 100 m Main Warehouse)
   return (
     <>
       <Canvas
@@ -128,7 +138,7 @@ export function Scene3D() {
         shadows={quality !== "low"}
         dpr={quality === "high" ? [1, 2] : quality === "medium" ? [1, 1.5] : 1}
         gl={{ antialias: quality !== "low", powerPreference: "high-performance", toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.15 }}
-        camera={{ position: [W / 2 + 4, 58, D + 50], fov: 36, near: 0.5, far: 400 }}
+        camera={{ position: [W / 2 + 4, 58 * k, D + 50 * k], fov: 36, near: 0.5, far: 400 }}
         onPointerMissed={() => tool === "select" && select(null)}
       >
         <SceneContent quality={quality} />
