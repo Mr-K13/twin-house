@@ -14,6 +14,7 @@ import { Robots } from "./Robots";
 import { CameraGizmos } from "./Cameras";
 import { People } from "./People";
 import { Mezzanine, FLOOR_ELEV, Lift } from "./Mezzanine";
+import { ENV } from "./palette";
 
 /** Floor extents of the active layout (read at render time: the console remounts per twin) */
 const floorSize = () => ({ W: layout.size.width, D: layout.size.depth });
@@ -55,15 +56,14 @@ function Lights({ quality }: { quality: string }) {
   const { W, D } = floorSize();
   return (
     <>
-      <ambientLight intensity={0.35} color="#b9c6e0" />
-      <hemisphereLight args={["#9db4e0", "#1a2233", 0.45]} />
+      <ambientLight intensity={0.3} color={ENV.ambient} />
+      <hemisphereLight args={[ENV.hemiSky, ENV.hemiGround, 0.45]} />
       <directionalLight
-        position={[W * 0.3, 60, D * 0.2]} intensity={1.6} color="#e8eefc" castShadow={shadows}
+        position={[W * 0.3, 60, D * 0.2]} intensity={1.15} color={ENV.sun} castShadow={shadows}
         shadow-mapSize={quality === "high" ? [4096, 4096] : [2048, 2048]} shadow-bias={-0.0004}
         shadow-camera-left={-W * 0.7} shadow-camera-right={W * 0.7} shadow-camera-top={D * 0.7} shadow-camera-bottom={-D * 0.7} shadow-camera-near={10} shadow-camera-far={160}
       />
-      <pointLight position={[W / 2, 10, D / 2]} intensity={0.6} color="#60a5fa" distance={80} decay={1} />
-      {layout === BUNDLED_LAYOUT && <>
+            {layout === BUNDLED_LAYOUT && <>
         {/* Main Warehouse dock lights (inbound / outbound door rows) */}
         <pointLight position={[26, 8, 4]} intensity={1.2} color="#22c55e" distance={25} decay={1.5} />
         <pointLight position={[74, 8, 4]} intensity={1.2} color="#22d3ee" distance={25} decay={1.5} />
@@ -82,7 +82,7 @@ function FpsCounter({ onFps }: { onFps: (v: number) => void }) {
 function Background({ env = true }: { env?: boolean }) {
   const { scene, gl } = useThree();
   useEffect(() => {
-    scene.background = new THREE.Color("#05080f"); scene.fog = new THREE.Fog("#05080f", 120, 260);
+    scene.background = new THREE.Color(ENV.sky); scene.fog = new THREE.Fog(ENV.sky, 120, 260);
     if (!env) return;
     const pmrem = new THREE.PMREMGenerator(gl);
     const tex = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;

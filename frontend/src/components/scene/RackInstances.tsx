@@ -3,10 +3,10 @@ import * as THREE from "three";
 import { layout } from "../../state/store";
 import type { LayoutRack } from "../../layout/types";
 import { mulberry32 } from "../../simulation/engine";
+import { PALETTE, KRAFT } from "./palette";
 
 const dummy = new THREE.Object3D();
 const color = new THREE.Color();
-const BOX_PALETTE = ["#b8834a", "#c99a63", "#a87440", "#d2a874", "#9c6b3c"];
 
 /**
  * 160 racks. Each rack: uprights ×4 + beams ×levels. Boxes fill the levels at random (fixed seed).
@@ -42,7 +42,7 @@ export function RackInstances({ castShadow = true, floor = 1, yOffset = 0, racks
           const bw = 1.1 + rnd() * 0.3, bh = Math.min(levelH - 0.25, 0.7 + rnd() * 0.6), bd = d - 0.2;
           dummy.position.set(x + 0.75 + s * 1.5, y + bh / 2 + 0.03, z + d / 2);
           dummy.scale.set(bw, bh, bd); dummy.rotation.set(0, (rnd() - 0.5) * 0.08, 0); dummy.updateMatrix();
-          boxes.push({ m: dummy.matrix.clone(), c: BOX_PALETTE[Math.floor(rnd() * BOX_PALETTE.length)] });
+          boxes.push({ m: dummy.matrix.clone(), c: KRAFT[Math.floor(rnd() * KRAFT.length)] });
         }
       }
     }
@@ -64,11 +64,11 @@ export function RackInstances({ castShadow = true, floor = 1, yOffset = 0, racks
     <group position-y={yOffset}>
       <instancedMesh ref={postRef} args={[undefined, undefined, data.posts.length]} castShadow={castShadow} receiveShadow frustumCulled={false}>
         <boxGeometry />
-        <meshStandardMaterial color="#2f3a4a" roughness={0.6} metalness={0.6} />
+        <meshStandardMaterial color={PALETTE.blue} roughness={0.5} metalness={0.25} />
       </instancedMesh>
       <instancedMesh ref={beamRef} args={[undefined, undefined, data.beams.length]} frustumCulled={false}>
         <boxGeometry />
-        <meshStandardMaterial color="#e07a1f" roughness={0.5} metalness={0.5} />
+        <meshStandardMaterial color={PALETTE.silver} roughness={0.5} metalness={0.3} />
       </instancedMesh>
       <instancedMesh ref={boxRef} args={[undefined, undefined, data.boxes.length]} castShadow={castShadow} receiveShadow frustumCulled={false}>
         <boxGeometry />

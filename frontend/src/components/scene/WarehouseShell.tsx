@@ -2,17 +2,18 @@ import { useMemo } from "react";
 import * as THREE from "three";
 import { BUNDLED_LAYOUT, layout } from "../../state/store";
 import type { LayoutDock } from "../../layout/types";
+import { PALETTE, ENV } from "./palette";
 
-/** Procedural concrete floor texture (noise + a 1 m grid, repeating every 8 m) sized for a W × D floor; shared with the scenario workspace editor */
+/** Procedural light concrete floor texture (noise + a 1 m grid, repeating every 8 m) sized for a W × D floor; shared with the scenario workspace editor */
 export function useFloorTexture(W: number, D: number) {
   return useMemo(() => {
     const c = document.createElement("canvas"); c.width = c.height = 512;
     const g = c.getContext("2d")!;
-    g.fillStyle = "#1b2230"; g.fillRect(0, 0, 512, 512);
+    g.fillStyle = ENV.floor; g.fillRect(0, 0, 512, 512);
     // Fine noise dots
-    for (let i = 0; i < 9000; i++) { g.fillStyle = `rgba(255,255,255,${Math.random() * 0.045})`; g.fillRect(Math.random() * 512, Math.random() * 512, 2, 2); }
+    for (let i = 0; i < 9000; i++) { g.fillStyle = `${ENV.floorSpeck}${Math.random() * 0.05})`; g.fillRect(Math.random() * 512, Math.random() * 512, 2, 2); }
     // Grid lines (every 1m, one cell = 512/8 px => texture repeat every 8 m)
-    g.strokeStyle = "rgba(120,140,170,0.18)"; g.lineWidth = 1.5;
+    g.strokeStyle = ENV.floorGrid; g.lineWidth = 1.5;
     for (let i = 0; i <= 8; i++) { const p = (i * 512) / 8; g.beginPath(); g.moveTo(p, 0); g.lineTo(p, 512); g.moveTo(0, p); g.lineTo(512, p); g.stroke(); }
     const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(W / 8, D / 8); t.anisotropy = 8; t.colorSpace = THREE.SRGBColorSpace;
     return t;
@@ -44,7 +45,7 @@ export function WarehouseShell({ lite = false }: { lite?: boolean }) {
       {/* Floor */}
       <mesh rotation-x={-Math.PI / 2} position={[W / 2, 0, D / 2]} receiveShadow>
         <planeGeometry args={[W, D]} />
-        <meshStandardMaterial map={floorTex} roughness={0.85} metalness={0.15} />
+        <meshStandardMaterial map={floorTex} roughness={0.8} metalness={0.05} />
       </mesh>
       {/* Aisle markings */}
       {aisleLines.map(([x0, z0, x1, z1], i) => {
@@ -53,7 +54,7 @@ export function WarehouseShell({ lite = false }: { lite?: boolean }) {
         return (
           <mesh key={i} position={[(x0 + x1) / 2, 0.01, (z0 + z1) / 2]} rotation={[-Math.PI / 2, 0, -ang]}>
             <planeGeometry args={[len, 0.18]} />
-            <meshBasicMaterial color="#c9a227" transparent opacity={0.7} />
+            <meshBasicMaterial color={PALETTE.yellow} transparent opacity={0.8} />
           </mesh>
         );
       })}
@@ -64,28 +65,28 @@ export function WarehouseShell({ lite = false }: { lite?: boolean }) {
       ].map((w, i) => (
         <mesh key={i} position={w.p as [number, number, number]}>
           <boxGeometry args={w.s as [number, number, number]} />
-          <meshStandardMaterial color="#151c29" roughness={0.9} side={THREE.DoubleSide} />
+          <meshStandardMaterial color={ENV.wall} roughness={0.9} side={THREE.DoubleSide} />
         </mesh>
       ))}
       {/* Blue waistline on the walls */}
       {[[W / 2, 0.25, D], [0, D / 2, Math.PI / 2], [W, D / 2, Math.PI / 2]].map((w, i) => (
         <mesh key={i} position={[w[0], 1.2, w[1] === 0.25 ? w[2] - 0.22 : w[1]]} rotation-y={w[2] === Math.PI / 2 ? w[2] : 0}>
           <planeGeometry args={[w[2] === Math.PI / 2 ? D : W, 0.12]} />
-          <meshBasicMaterial color="#3b82f6" side={THREE.DoubleSide} />
+          <meshBasicMaterial color={PALETTE.blue} side={THREE.DoubleSide} />
         </mesh>
       ))}
       {/* Pillars */}
       {!lite && pillars.map(([x, z], i) => (
         <mesh key={i} position={[x, H / 2, z]} castShadow>
           <boxGeometry args={[0.5, H, 0.5]} />
-          <meshStandardMaterial color="#27313f" roughness={0.8} metalness={0.3} />
+          <meshStandardMaterial color={PALETTE.blue} roughness={0.6} metalness={0.2} />
         </mesh>
       ))}
       {/* Wall-top beams (no full roof, so the top view can show the interior) */}
       {!lite && [[W / 2, 0.2, W, 0.4], [W / 2, D - 0.2, W, 0.4], [0.2, D / 2, 0.4, D], [W - 0.2, D / 2, 0.4, D]].map(([x, z, sx, sz], i) => (
         <mesh key={i} position={[x, H + 0.2, z]}>
           <boxGeometry args={[sx, 0.5, sz]} />
-          <meshStandardMaterial color="#1f2937" roughness={0.9} />
+          <meshStandardMaterial color={PALETTE.blueDeep} roughness={0.7} />
         </mesh>
       ))}
       {/* Dock doors */}
@@ -102,7 +103,7 @@ export function WarehouseShell({ lite = false }: { lite?: boolean }) {
 }
 
 /**
- * Loading dock: door panel tinted by kind, header light bar, and a truck trailer parked outside. The door sits at `door` and faces away from the
+ * Loading dock: roll-up door in a blue frame, header light bar tinted by kind, and a truck (trailer + cab) parked outside. The door sits at `door` and faces away from the
  * apron `rect` (a north-wall dock of warehouse_layout.json looks towards −z; a twin's dock can face any wall).
  */
 export function DockModel({ d }: { d: LayoutDock }) {
@@ -112,19 +113,36 @@ export function DockModel({ d }: { d: LayoutDock }) {
   return (
     <group position={[d.door[0], 0, d.door[1]]} rotation-y={yaw}>
       <group position-z={0.25}>
+      {/* Roll-up door panel with slats on the inner (+z) face, inside a blue frame */}
       <mesh position={[0, 2.4, 0]}>
         <boxGeometry args={[5.5, 4.8, 0.3]} />
-        <meshStandardMaterial color="#0e1a2b" roughness={0.6} metalness={0.4} emissive={d.kind === "INBOUND" ? "#14532d" : "#164e63"} emissiveIntensity={0.6} />
+        <meshStandardMaterial color={PALETTE.silver} roughness={0.6} metalness={0.2} />
       </mesh>
+      {Array.from({ length: 7 }, (_, i) => (
+        <mesh key={i} position={[0, 0.6 + i * 0.6, 0.16]}><boxGeometry args={[5.4, 0.05, 0.02]} /><meshStandardMaterial color={PALETTE.steel} /></mesh>
+      ))}
+      {[-2.9, 2.9].map((x) => (
+        <mesh key={x} position={[x, 2.4, 0]}><boxGeometry args={[0.4, 4.8, 0.5]} /><meshStandardMaterial color={PALETTE.blue} roughness={0.5} metalness={0.2} /></mesh>
+      ))}
+      {/* Header light bar: kind colour (inbound green, outbound cyan) */}
       <mesh position={[0, 5, 0]}>
         <boxGeometry args={[6.2, 0.3, 0.5]} />
         <meshBasicMaterial color={d.kind === "INBOUND" ? "#22c55e" : "#22d3ee"} />
       </mesh>
-      {/* Truck trailer (outside the dock) */}
+      {/* Truck outside the dock: white trailer with a blue stripe, blue cab at the far end, dark wheels */}
       <mesh position={[0, 1.9, -5]}>
         <boxGeometry args={[2.6, 3.2, 9]} />
-        <meshStandardMaterial color="#d9dee7" roughness={0.5} metalness={0.2} />
+        <meshStandardMaterial color={PALETTE.white} roughness={0.5} metalness={0.1} />
       </mesh>
+      <mesh position={[0, 0.75, -5]}><boxGeometry args={[2.64, 0.45, 9.04]} /><meshStandardMaterial color={PALETTE.blue} roughness={0.5} /></mesh>
+      <group position={[0, 0, -10.5]}>
+        <mesh position={[0, 1.65, 0]}><boxGeometry args={[2.5, 2.5, 1.9]} /><meshStandardMaterial color={PALETTE.blue} roughness={0.45} metalness={0.15} /></mesh>
+        <mesh position={[0, 2.2, -0.96]}><boxGeometry args={[2.2, 0.9, 0.04]} /><meshStandardMaterial color={PALETTE.ink} roughness={0.3} /></mesh>
+        <mesh position={[0, 0.55, -0.98]}><boxGeometry args={[2.5, 0.3, 0.12]} /><meshStandardMaterial color={PALETTE.silver} /></mesh>
+      </group>
+      {[-8, -6.9, -10.5].flatMap((z) => [-1.15, 1.15].map((x) => (
+        <mesh key={`${x}:${z}`} position={[x, 0.45, z]} rotation-z={Math.PI / 2}><cylinderGeometry args={[0.45, 0.45, 0.35, 16]} /><meshStandardMaterial color={PALETTE.ink} roughness={0.9} /></mesh>
+      )))}
       </group>
     </group>
   );

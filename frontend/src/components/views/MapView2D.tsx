@@ -1,7 +1,13 @@
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { STATUS_COLOR, layout, useStore } from "../../state/store";
 import { buildNavGrid } from "../../layout/navgrid";
 import { getEngine } from "../../simulation/runner";
+import { PALETTE, ENV } from "../scene/palette";
+import { placeLabels } from "../ui/labelPlacement";
+
+/** Robot label font size (m) and the half-size of the area a robot dot (r = 1) keeps free of labels */
+const LABEL_FS = 1.8;
+const DOT_R = 1.1;
 
 /** Top-down 2D map: navigation grid obstacles, zones, conveyors, robots. TRAFFIC / HEATMAP modes overlay heat areas. */
 export function MapView2D({ mode }: { mode: "MAP" | "TRAFFIC" | "HEATMAP" }) {
@@ -63,6 +69,22 @@ export function MapView2D({ mode }: { mode: "MAP" | "TRAFFIC" | "HEATMAP" }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, tick, W, D, source, remoteHeat, mapFloor, allRobots]);
 
+  // Robot labels: placed so they never cover each other or another robot dot (parked rows are 2 m apart, narrower than a label)
+  const prevSlots = useRef(new Map<string, number>());
+  const robotList = Object.values(robots);
+  const labels = placeLabels(
+    robotList.map((r) => ({ id: r.id, x: r.position[0], y: r.position[2], w: r.id.length * LABEL_FS * 0.6 + 0.5, h: LABEL_FS * 1.15, priority: r.id === selected })),
+    {
+      markR: DOT_R, gap: 0.3, bounds: { x0: -2, y0: -7, x1: W + 2, y1: D + 3 }, previous: prevSlots.current,
+      obstacles: [
+        // Lift square + id text, and the heat legend (bottom right, drawn from (W − 22, D − 6) to (W − 2, D − 1.8))
+        ...layout.lifts.map((l) => ({ x0: l.cell[0] - 0.7, y0: l.cell[1] - 0.7, x1: l.cell[0] + 2 + l.id.length * LABEL_FS * 0.6, y1: l.cell[1] + 1.7 })),
+        ...(heat ? [{ x0: W - 22.5, y0: D - 6.5, x1: W - 1.5, y1: D - 1.5 }] : []),
+      ],
+    },
+  );
+  prevSlots.current = new Map([...labels].map(([id, l]) => [id, l.slot]));
+
   const heatColor = (t: number) => {
     const stops = [[0, 37, 99, 235], [0.35, 34, 197, 94], [0.6, 234, 179, 8], [0.8, 249, 115, 22], [1, 239, 68, 68]];
     let i = 1; while (i < stops.length - 1 && stops[i][0] < t) i++;
@@ -72,10 +94,10 @@ export function MapView2D({ mode }: { mode: "MAP" | "TRAFFIC" | "HEATMAP" }) {
 
   return (
     <svg className="map2d" viewBox={`-2 -7 ${W + 4} ${D + 10}`} preserveAspectRatio="xMidYMid meet">
-      <rect x="0" y="0" width={W} height={D} fill="#0a1020" stroke="#334155" strokeWidth="0.4" />
+      <rect x="0" y="0" width={W} height={D} fill={ENV.floor} stroke={ENV.mapEdge} strokeWidth="0.4" />
       {/* Grid lines */}
-      {Array.from({ length: W / 10 + 1 }, (_, i) => <line key={"v" + i} x1={i * 10} x2={i * 10} y1="0" y2={D} stroke="#16213a" strokeWidth="0.15" />)}
-      {Array.from({ length: D / 10 + 1 }, (_, i) => <line key={"h" + i} y1={i * 10} y2={i * 10} x1="0" x2={W} stroke="#16213a" strokeWidth="0.15" />)}
+      {Array.from({ length: W / 10 + 1 }, (_, i) => <line key={"v" + i} x1={i * 10} x2={i * 10} y1="0" y2={D} stroke={ENV.mapGrid} strokeWidth="0.15" />)}
+      {Array.from({ length: D / 10 + 1 }, (_, i) => <line key={"h" + i} y1={i * 10} y2={i * 10} x1="0" x2={W} stroke={ENV.mapGrid} strokeWidth="0.15" />)}
       {heat && (
         <g opacity="0.75">
           {Array.from(heat.v).map((s, i) => { const t = s / heat.max; if (t < 0.08) return null; return <rect key={i} x={(i % heat.cols) * heat.cs} y={Math.floor(i / heat.cols) * heat.cs} width={heat.cs} height={heat.cs} fill={heatColor(t)} opacity={Math.min(0.85, t + 0.15)} />; })}
@@ -84,38 +106,45 @@ export function MapView2D({ mode }: { mode: "MAP" | "TRAFFIC" | "HEATMAP" }) {
       {mapFloor !== 1 && <text x={1.5} y={-3.5} fill="#14b8a6" fontSize="2.6" fontWeight="700">FLOOR {mapFloor} · MEZZANINE</text>}
       {layout.zones.filter((z) => (z.floor ?? 1) === mapFloor).map((z) => {
         const st = zones[z.id]?.status; const col = st === "BLOCKED" ? "#ef4444" : st === "CONGESTED" ? "#f97316" : z.color;
-        return <g key={z.id}><polygon points={z.polygon.map((p) => p.join(",")).join(" ")} fill={col} fillOpacity="0.05" stroke={col} strokeWidth="0.35" /><text x={z.polygon[0][0] + 1} y={z.polygon[0][1] - 1} fill={col} fontSize="2.6" fontWeight="700">{z.name.toUpperCase()}</text></g>;
+        return <g key={z.id}><polygon points={z.polygon.map((p) => p.join(",")).join(" ")} fill={col} fillOpacity="0.08" stroke={col} strokeWidth="0.35" /><text x={z.polygon[0][0] + 1} y={z.polygon[0][1] - 1} fill={col} fontSize="2.6" fontWeight="700">{z.name.toUpperCase()}</text></g>;
       })}
       {mapFloor !== 1 && layout.floors.filter((f) => f.id === mapFloor && f.footprint).map((f) => (
         <polygon key={f.id} points={f.footprint!.map((p) => p.join(",")).join(" ")} fill="#14b8a6" fillOpacity="0.03" stroke="#14b8a6" strokeWidth="0.3" strokeDasharray="1.5 0.8" />
       ))}
       {layout.lifts.map((l) => (
-        <g key={l.id}><rect x={l.cell[0] - 0.7} y={l.cell[1] - 0.7} width="2.4" height="2.4" fill="none" stroke="#a78bfa" strokeWidth="0.35" /><text x={l.cell[0] + 2} y={l.cell[1] + 0.6} fill="#a78bfa" fontSize="1.8">{l.id}</text></g>
+        <g key={l.id}><rect x={l.cell[0] - 0.7} y={l.cell[1] - 0.7} width="2.4" height="2.4" fill="none" stroke="#7c3aed" strokeWidth="0.35" /><text x={l.cell[0] + 2} y={l.cell[1] + 0.6} fill="#7c3aed" fontSize="1.8">{l.id}</text></g>
       ))}
-      {blocks.map(([c, r, len], i) => <rect key={i} x={c * grid.cols / grid.cols} y={r} width={len} height="1" fill="#334155" />)}
-      {mapFloor === 1 && layout.conveyors.map((c) => <polyline key={c.id} points={c.path.map((p) => p.join(",")).join(" ")} fill="none" stroke="#22d3ee" strokeWidth="1" strokeOpacity="0.9" />)}
-      {mapFloor === 1 && layout.docks.map((d) => <rect key={d.id} x={d.rect[0]} y={d.rect[1]} width={d.rect[2] - d.rect[0]} height={d.rect[3] - d.rect[1]} fill="none" stroke={d.kind === "INBOUND" ? "#22c55e" : "#22d3ee"} strokeWidth="0.3" strokeDasharray="1 0.6" />)}
-      {mapFloor === 1 && layout.charging_stations.map((c) => <circle key={c.id} cx={c.position[0]} cy={c.position[2]} r="0.6" fill="#3b82f6" />)}
-      {layout.cameras.filter((c) => (c.floor ?? 1) === mapFloor).map((c) => <rect key={c.id} x={c.position[0] - 0.5} y={c.position[2] - 0.5} width="1" height="1" fill="#facc15" />)}
+      {blocks.map(([c, r, len], i) => <rect key={i} x={c * grid.cols / grid.cols} y={r} width={len} height="1" fill={PALETTE.blue} fillOpacity="0.35" />)}
+      {mapFloor === 1 && layout.conveyors.map((c) => <polyline key={c.id} points={c.path.map((p) => p.join(",")).join(" ")} fill="none" stroke={PALETTE.teal} strokeWidth="1" strokeOpacity="0.9" />)}
+      {mapFloor === 1 && layout.docks.map((d) => <rect key={d.id} x={d.rect[0]} y={d.rect[1]} width={d.rect[2] - d.rect[0]} height={d.rect[3] - d.rect[1]} fill="none" stroke={d.kind === "INBOUND" ? "#16a34a" : "#0891b2"} strokeWidth="0.3" strokeDasharray="1 0.6" />)}
+      {mapFloor === 1 && layout.charging_stations.map((c) => <circle key={c.id} cx={c.position[0]} cy={c.position[2]} r="0.6" fill={PALETTE.blue} />)}
+      {layout.cameras.filter((c) => (c.floor ?? 1) === mapFloor).map((c) => <rect key={c.id} x={c.position[0] - 0.5} y={c.position[2] - 0.5} width="1" height="1" fill={PALETTE.orange} />)}
       {Object.values(robots).map((r) => r.path.length > r.path_index && (
-        <polyline key={"p" + r.id} points={[[r.position[0], r.position[2]], ...r.path.slice(r.path_index).map((c) => [c[0] + 0.5, c[1] + 0.5])].map((p) => p.join(",")).join(" ")} fill="none" stroke={r.id === selected ? "#fff" : "#22d3ee"} strokeWidth={r.id === selected ? 0.5 : 0.25} strokeOpacity={r.id === selected ? 1 : 0.5} strokeDasharray="1 0.6" />
+        <polyline key={"p" + r.id} points={[[r.position[0], r.position[2]], ...r.path.slice(r.path_index).map((c) => [c[0] + 0.5, c[1] + 0.5])].map((p) => p.join(",")).join(" ")} fill="none" stroke={r.id === selected ? PALETTE.blueDeep : "#0891b2"} strokeWidth={r.id === selected ? 0.5 : 0.25} strokeOpacity={r.id === selected ? 1 : 0.6} strokeDasharray="1 0.6" />
       ))}
-      {Object.values(robots).map((r) => {
-        const sel = r.id === selected;
+      {robotList.map((r) => (
+        <g key={r.id} transform={`translate(${r.position[0]},${r.position[2]})`} onClick={() => select(r.id)} style={{ cursor: "pointer" }}>
+          {r.id === selected && <circle r="2.2" fill="none" stroke={PALETTE.blue} strokeWidth="0.3" />}
+          <circle r="1" fill={STATUS_COLOR[r.status]} stroke="#ffffff" strokeWidth="0.25" />
+          <line x1="0" y1="0" x2={Math.cos(r.heading) * 1.6} y2={Math.sin(r.heading) * 1.6} stroke={PALETTE.ink} strokeWidth="0.25" />
+        </g>
+      ))}
+      {/* Labels in their own layer above every dot; a label pushed out of a crowded row gets a leader line back to its robot */}
+      {robotList.map((r) => {
+        const l = labels.get(r.id)!, sel = r.id === selected, above = l.cy < r.position[2];
         return (
-          <g key={r.id} transform={`translate(${r.position[0]},${r.position[2]})`} onClick={() => select(r.id)} style={{ cursor: "pointer" }}>
-            {sel && <circle r="2.2" fill="none" stroke="#60a5fa" strokeWidth="0.3" />}
-            <circle r="1" fill={STATUS_COLOR[r.status]} stroke="#05080f" strokeWidth="0.25" />
-            <line x1="0" y1="0" x2={Math.cos(r.heading) * 1.6} y2={Math.sin(r.heading) * 1.6} stroke="#fff" strokeWidth="0.25" />
-            <text x="1.4" y="-1" fill={sel ? "#fff" : "#cbd5e1"} fontSize="1.8" fontFamily="JetBrains Mono, monospace">{r.id}</text>
+          <g key={"l" + r.id} onClick={() => select(r.id)} style={{ cursor: "pointer" }}>
+            {l.leader && <line x1={r.position[0]} y1={r.position[2] + (above ? -1 : 1)} x2={l.cx} y2={above ? l.box.y1 : l.box.y0} stroke={ENV.mapCaption} strokeWidth="0.12" />}
+            <rect x={l.box.x0} y={l.box.y0} width={l.box.x1 - l.box.x0} height={l.box.y1 - l.box.y0} rx="0.3" fill="#ffffff" fillOpacity="0.85" stroke={sel ? PALETTE.blue : ENV.mapEdge} strokeWidth={sel ? 0.2 : 0.1} />
+            <text x={l.cx} y={l.cy} textAnchor="middle" dominantBaseline="central" fill={sel ? PALETTE.blueDeep : ENV.mapLabel} fontSize={LABEL_FS} fontWeight={sel ? 700 : 500} fontFamily="JetBrains Mono, monospace">{r.id}</text>
           </g>
         );
       })}
       {heat && (
         <g transform={`translate(${W - 22}, ${D - 3})`}>
           {Array.from({ length: 20 }, (_, i) => <rect key={i} x={i} y="0" width="1" height="1.2" fill={heatColor(i / 19)} />)}
-          <text x="0" y="-0.6" fill="#8b98ad" fontSize="1.6">LOW</text><text x="20" y="-0.6" fill="#8b98ad" fontSize="1.6" textAnchor="end">HIGH</text>
-          <text x="20" y="-3" fill="#cbd5e1" fontSize="1.7" textAnchor="end" fontWeight="600">{mode === "TRAFFIC" ? "LIVE ROBOT DENSITY" : "ACCUMULATED TRAFFIC"}</text>
+          <text x="0" y="-0.6" fill={ENV.mapCaption} fontSize="1.6">LOW</text><text x="20" y="-0.6" fill={ENV.mapCaption} fontSize="1.6" textAnchor="end">HIGH</text>
+          <text x="20" y="-3" fill={ENV.mapLabel} fontSize="1.7" textAnchor="end" fontWeight="600">{mode === "TRAFFIC" ? "LIVE ROBOT DENSITY" : "ACCUMULATED TRAFFIC"}</text>
         </g>
       )}
     </svg>

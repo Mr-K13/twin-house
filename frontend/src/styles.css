@@ -133,7 +133,7 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .alert-card .ico { width: 18px; height: 18px; flex: none; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; }
 
 /* ── Center / viewport ─────────────────────────── */
-.viewport { position: relative; flex: 1; min-height: 0; border: 1px solid var(--border); border-radius: var(--radius); background: #05080f; overflow: hidden; }
+.viewport { position: relative; flex: 1; min-height: 0; border: 1px solid var(--border); border-radius: var(--radius); background: #e1e7ef; overflow: hidden; }
 .viewport canvas { display: block; }
 .view-tabs { position: absolute; top: 10px; left: 10px; z-index: 5; display: flex; border: 1px solid var(--border-strong); border-radius: 6px; background: rgba(255,255,255,.92); backdrop-filter: blur(6px); overflow: hidden; box-shadow: 0 2px 8px rgba(15,23,42,.08); }
 .view-tabs button { padding: 8px 16px; font-size: 12px; font-weight: 600; color: var(--muted); border-right: 1px solid var(--border); }
@@ -150,10 +150,14 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .fps { position: absolute; bottom: 14px; right: 14px; z-index: 5; font-family: var(--mono); font-size: 11px; color: var(--faint); }
 
 /* 3D labels */
-.lbl { pointer-events: auto; cursor: pointer; font-family: var(--mono); font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 3px; background: rgba(5,8,15,.85); border: 1px solid #475569; color: #cbd5e1; white-space: nowrap; transform: translate(-50%, -100%); }
+.lbl { position: relative; pointer-events: auto; cursor: pointer; font-family: var(--mono); font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 3px; background: rgba(5,8,15,.85); border: 1px solid #475569; color: #cbd5e1; white-space: nowrap; transform: translate(-50%, -100%); }
 .lbl.sel { border-color: #60a5fa; color: #fff; box-shadow: 0 0 0 1px #2563eb; }
 .lbl.err { border-color: var(--red); color: #fecaca; background: rgba(69,10,10,.9); }
 .lbl.chg { border-color: #1d4ed8; color: #bfdbfe; }
+/* Leader line from a decluttered label back to its robot (length set per frame in --lead) */
+.lbl[data-lead="down"]::after, .lbl[data-lead="up"]::after { content: ""; position: absolute; left: 50%; width: 1px; height: var(--lead, 0); background: #64748b; pointer-events: none; }
+.lbl[data-lead="down"]::after { top: 100%; }
+.lbl[data-lead="up"]::after { bottom: 100%; }
 .zone-lbl { pointer-events: auto; cursor: pointer; font-size: 12.5px; font-weight: 700; letter-spacing: .06em; padding: 5px 12px; border-radius: 4px; background: rgba(5,8,15,.85); border: 1.5px solid; white-space: nowrap; transform: translate(-50%, -50%); }
 .sign-lbl { font-size: 11px; font-weight: 700; letter-spacing: .08em; padding: 4px 12px; border-radius: 3px; background: rgba(5,8,15,.85); border: 1px solid; white-space: nowrap; transform: translate(-50%, -50%); }
 
@@ -393,7 +397,7 @@ table.dt.full td { white-space: normal; }
 .ws-viewport { min-width: 0; min-height: 0; }
 .ws-canvas { position: absolute; inset: 0; user-select: none; -webkit-user-select: none; touch-action: none; }
 .ws-canvas.drop-target { outline: 2px dashed #60a5fa; outline-offset: -2px; }
-.ws-help { position: absolute; bottom: 12px; left: 12px; z-index: 5; font-size: 11px; color: var(--faint); background: rgba(5,8,15,.6); padding: 4px 8px; border-radius: 4px; pointer-events: none; }
+.ws-help { position: absolute; bottom: 12px; left: 12px; z-index: 5; font-size: 11px; color: var(--muted); background: rgba(255,255,255,.85); border: 1px solid var(--border); padding: 4px 8px; border-radius: 4px; pointer-events: none; }
 .palette .wi-item { align-items: flex-start; gap: 10px; cursor: grab; user-select: none; }
 .palette .wi-item:hover { border-color: #93c5fd; }
 .palette .wi-item:active { cursor: grabbing; }

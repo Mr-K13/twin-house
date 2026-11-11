@@ -20,6 +20,7 @@ import { placeOnSurface, snapToCardinal, wrapRotation, yawFromQuaternion } from 
 import { useScenarioStore } from "../../scenario/store";
 import { useFloorTexture } from "../scene/WarehouseShell";
 import { DRAG_MIME } from "./AssetPalette";
+import { ENV } from "../scene/palette";
 
 interface Hit { point: THREE.Vector3; instanceId: string | null }
 /** R3F replaces `event.target` with a pointer-capture proxy that routes later events to the capturing object */
@@ -81,7 +82,7 @@ function EditorShell({ size }: { size: ScenarioSize }) {
   const { length: L, width: W, height: H } = size;
   const floorTex = useFloorTexture(L, W);
   const scene = useThree((s) => s.scene);
-  useEffect(() => { scene.background = new THREE.Color("#05080f"); return () => { scene.background = null; }; }, [scene]);
+  useEffect(() => { scene.background = new THREE.Color(ENV.sky); return () => { scene.background = null; }; }, [scene]);
   const walls = useMemo<Array<{ p: P3; s: P3 }>>(() => {
     const h = WALL_T / 2;
     return [
@@ -93,20 +94,19 @@ function EditorShell({ size }: { size: ScenarioSize }) {
   const topEdge: P3[] = [[0, H, 0], [L, H, 0], [L, H, W], [0, H, W], [0, H, 0]];
   return (
     <group>
-      <ambientLight intensity={0.45} color="#b9c6e0" />
-      <hemisphereLight args={["#9db4e0", "#1a2233", 0.5]} />
-      <directionalLight position={[L * 0.3, Math.max(40, H * 3), W * 0.2]} intensity={1.5} color="#e8eefc" />
-      <pointLight position={[L / 2, H, W / 2]} intensity={0.5} color="#60a5fa" distance={Math.max(L, W)} decay={1} />
+      <ambientLight intensity={0.3} color={ENV.ambient} />
+      <hemisphereLight args={[ENV.hemiSky, ENV.hemiGround, 0.45]} />
+      <directionalLight position={[L * 0.3, Math.max(40, H * 3), W * 0.2]} intensity={1.15} color={ENV.sun} />
       <mesh rotation-x={-Math.PI / 2} position={[L / 2, 0, W / 2]} userData={{ surface: true }}>
         <planeGeometry args={[L, W]} />
-        <meshStandardMaterial map={floorTex} roughness={0.85} metalness={0.15} />
+        <meshStandardMaterial map={floorTex} roughness={0.8} metalness={0.05} />
       </mesh>
       {/* The floor texture carries the 1 m grid; every 10 m a stronger line */}
-      <FloorGrid L={L} W={W} step={10} color="#3b4a63" opacity={0.7} y={0.012} />
+      <FloorGrid L={L} W={W} step={10} color={ENV.grid} opacity={0.7} y={0.012} />
       {walls.map((w, i) => (
         <mesh key={i} position={w.p}>
           <boxGeometry args={w.s} />
-          <meshStandardMaterial color="#1e293b" transparent opacity={0.22} side={THREE.DoubleSide} depthWrite={false} />
+          <meshStandardMaterial color={ENV.wall} transparent opacity={0.45} side={THREE.DoubleSide} depthWrite={false} />
         </mesh>
       ))}
       <Line points={floorEdge} color="#3b82f6" lineWidth={1.5} />

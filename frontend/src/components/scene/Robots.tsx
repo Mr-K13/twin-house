@@ -1,18 +1,26 @@
-import { useMemo, useRef } from "react";
+import { useCallback, useMemo, useRef, type MutableRefObject } from "react";
 import { useFrame } from "@react-three/fiber";
 import { Html, Line } from "@react-three/drei";
 import * as THREE from "three";
 import { STATUS_COLOR, useStore } from "../../state/store";
 import { FLOOR_ELEV } from "./Mezzanine";
 import type { RobotState } from "../../schema/twin_state";
+import { PALETTE, KRAFT } from "./palette";
+import { placeLabels, type Box, type LabelItem } from "../ui/labelPlacement";
+
+/** Height (m) above the robot origin where its label is anchored */
+const LABEL_Y = 1.5;
+/** Hands a robot's label element (null on unmount) and its moving group to the label declutter pass */
+type LabelRegister = (id: string, el: HTMLDivElement | null, obj: THREE.Object3D) => void;
 
 /** Procedural AMR model: chassis, dark top cover, four wheels, front blue light bar, status light. A box sits on top when loaded. */
-export function RobotMesh({ r, selected, onSelect, showLabel, lite, smooth = true }: { r: RobotState; selected: boolean; onSelect: () => void; showLabel: boolean; lite?: boolean; smooth?: boolean }) {
+export function RobotMesh({ r, selected, onSelect, showLabel, lite, smooth = true, onLabel }: { r: RobotState; selected: boolean; onSelect: () => void; showLabel: boolean; lite?: boolean; smooth?: boolean; onLabel?: LabelRegister }) {
   const color = STATUS_COLOR[r.status];
   const ringRef = useRef<THREE.Mesh>(null!);
   const lampRef = useRef<THREE.MeshBasicMaterial>(null!);
   const groupRef = useRef<THREE.Group>(null!);
   const wheelsRef = useRef<THREE.Group>(null!);
+  const labelRef = useCallback((el: HTMLDivElement | null) => onLabel?.(r.id, el, groupRef.current), [onLabel, r.id]);
   // ⚠ round-9 root-cause fix: the transform must only get the initial value at mount time (a stable reference).
   // If we write position={[r.position[0], FLOOR_ELEV[r.floor], ...]} directly, the props content changes every tick.
   // Each React re-render (10 Hz) then overwrites the useFrame-smoothed transform back to "raw coordinates + FLOOR_ELEV(floor)".
@@ -56,28 +64,28 @@ export function RobotMesh({ r, selected, onSelect, showLabel, lite, smooth = tru
         {/* Chassis */}
         <mesh position={[0, 0.22, 0]} castShadow>
           <boxGeometry args={[0.95, 0.32, 0.68]} />
-          <meshStandardMaterial color="#d7dce6" roughness={0.35} metalness={0.5} />
+          <meshStandardMaterial color={PALETTE.white} roughness={0.4} metalness={0.2} />
         </mesh>
-        {/* Black top cover */}
+        {/* Blue top cover */}
         <mesh position={[0, 0.42, 0]} castShadow>
           <boxGeometry args={[0.8, 0.1, 0.58]} />
-          <meshStandardMaterial color="#111827" roughness={0.5} metalness={0.3} />
+          <meshStandardMaterial color={PALETTE.blue} roughness={0.5} metalness={0.2} />
         </mesh>
         {/* Lifting platform */}
         <mesh position={[0, 0.5, 0]}>
           <cylinderGeometry args={[0.3, 0.3, 0.06, 20]} />
-          <meshStandardMaterial color="#1f2937" roughness={0.6} metalness={0.4} />
+          <meshStandardMaterial color={PALETTE.ink} roughness={0.6} metalness={0.4} />
         </mesh>
         {/* Front light bar */}
         <mesh position={[0.485, 0.22, 0]}>
           <boxGeometry args={[0.02, 0.08, 0.5]} />
-          <meshBasicMaterial color="#60a5fa" />
+          <meshBasicMaterial color={PALETTE.blueSoft} />
         </mesh>
         {/* Yellow-black warning strips */}
         {[-0.35, 0.35].map((z) => (
           <mesh key={z} position={[0, 0.1, z]}>
             <boxGeometry args={[0.95, 0.06, 0.02]} />
-            <meshBasicMaterial color="#facc15" />
+            <meshBasicMaterial color={PALETTE.yellow} />
           </mesh>
         ))}
         {/* Wheels */}
@@ -85,7 +93,7 @@ export function RobotMesh({ r, selected, onSelect, showLabel, lite, smooth = tru
           {[[-0.32, -0.32], [0.32, -0.32], [-0.32, 0.32], [0.32, 0.32]].map(([x, z], i) => (
             <mesh key={i} position={[x, 0.12, z]} rotation-x={Math.PI / 2}>
               <cylinderGeometry args={[0.12, 0.12, 0.1, 14]} />
-              <meshStandardMaterial color="#0f172a" roughness={0.9} />
+              <meshStandardMaterial color={PALETTE.ink} roughness={0.9} />
             </mesh>
           ))}
         </group>
@@ -98,7 +106,7 @@ export function RobotMesh({ r, selected, onSelect, showLabel, lite, smooth = tru
         {loaded && (
           <mesh position={[0, 0.85, 0]} castShadow>
             <boxGeometry args={[0.78, 0.6, 0.62]} />
-            <meshStandardMaterial color="#c49a6c" roughness={0.9} />
+            <meshStandardMaterial color={KRAFT[1]} roughness={0.9} />
           </mesh>
         )}
       </group>
@@ -115,8 +123,8 @@ export function RobotMesh({ r, selected, onSelect, showLabel, lite, smooth = tru
       {selected && <mesh position={[0, 0.015, 0]} rotation-x={-Math.PI / 2}><circleGeometry args={[1.1, 40]} /><meshBasicMaterial color="#3b82f6" transparent opacity={0.18} /></mesh>}
       {!lite && (r.status === "ERROR") && <pointLight position={[0, 1, 0]} color="#ef4444" intensity={4} distance={5} />}
       {showLabel && (
-        <Html position={[0, 1.5, 0]} zIndexRange={[10, 0]}>
-          <div className={"lbl" + (selected ? " sel" : r.status === "ERROR" ? " err" : r.status === "CHARGING" ? " chg" : "")} onClick={(e) => { e.stopPropagation(); onSelect(); }}>
+        <Html position={[0, LABEL_Y, 0]} zIndexRange={[10, 0]}>
+          <div ref={labelRef} className={"lbl" + (selected ? " sel" : r.status === "ERROR" ? " err" : r.status === "CHARGING" ? " chg" : "")} onClick={(e) => { e.stopPropagation(); onSelect(); }}>
             {r.status === "ERROR" ? "⚠ " : ""}{r.id}
           </div>
         </Html>
@@ -171,10 +179,58 @@ function RobotPath({ r, selected }: { r: RobotState; selected: boolean }) {
   const col = r.fsm === "GOING_TO_CHARGE" ? "#60a5fa" : r.load.current > 0 ? "#f59e0b" : "#22d3ee";
   return (
     <group>
-      <Line points={pts} color={selected ? "#ffffff" : col} lineWidth={selected ? 2.4 : 1.1} dashed dashSize={0.7} gapSize={0.4} transparent opacity={selected ? 1 : 0.5} />
+      <Line points={pts} color={selected ? PALETTE.blueDeep : col} lineWidth={selected ? 2.4 : 1.4} dashed dashSize={0.7} gapSize={0.4} transparent opacity={selected ? 1 : 0.75} />
       <mesh position={[end[0], end[1] - 0.01, end[2]]} rotation-x={-Math.PI / 2}><ringGeometry args={[0.45, 0.65, 24]} /><meshBasicMaterial color={col} transparent opacity={0.85} /></mesh>
     </group>
   );
+}
+
+interface LabelEntry { el: HTMLDivElement; obj: THREE.Object3D; w: number; h: number }
+const tmp = new THREE.Vector3();
+
+/**
+ * Screen-space label declutter for the 3D view: every frame projects each robot's label anchor, places the labels with placeLabels (in
+ * pixels, avoiding each other and the robot bodies) and offsets each label element from its default spot centred above the anchor.
+ * A label pushed to a far tier gets a CSS leader line (data-lead) back to its anchor. Label sizes and the lift / zone / sign label boxes (kept clear
+ * as obstacles) are re-read every 10 frames.
+ */
+function LabelDeclutter({ reg, selected }: { reg: MutableRefObject<Map<string, LabelEntry>>; selected: string | null }) {
+  const prev = useRef(new Map<string, number>());
+  const frame = useRef(0);
+  const signs = useRef<Box[]>([]);
+  useFrame(({ camera, size, gl }) => {
+    const remeasure = frame.current++ % 10 === 0;
+    if (remeasure) {
+      const c = gl.domElement.getBoundingClientRect();
+      signs.current = [...(gl.domElement.parentElement?.parentElement?.querySelectorAll(".lift-lbl, .zone-lbl, .sign-lbl") ?? [])].map((el) => {
+        const b = el.getBoundingClientRect();
+        return { x0: b.left - c.left, y0: b.top - c.top, x1: b.right - c.left, y1: b.bottom - c.top };
+      });
+    }
+    const items: LabelItem[] = [], bodies: Box[] = [...signs.current];
+    const toScreen = () => [((tmp.x + 1) / 2) * size.width, ((1 - tmp.y) / 2) * size.height] as const;
+    for (const [id, e] of reg.current) {
+      if (remeasure || !e.w) { e.w = e.el.offsetWidth; e.h = e.el.offsetHeight; }
+      e.obj.getWorldPosition(tmp); tmp.y += 0.4; tmp.project(camera);
+      if (tmp.z > 1 || !e.w) continue;
+      const [bx, by] = toScreen();
+      bodies.push({ x0: bx - 10, y0: by - 10, x1: bx + 10, y1: by + 10 });
+      e.obj.getWorldPosition(tmp); tmp.y += LABEL_Y; tmp.project(camera);
+      const [x, y] = toScreen();
+      items.push({ id, x, y, w: e.w, h: e.h, priority: id === selected });
+    }
+    const out = placeLabels(items, { markR: 2, gap: 2, bounds: { x0: 0, y0: 0, x1: size.width, y1: size.height }, obstacles: bodies, previous: prev.current });
+    prev.current = new Map([...out].map(([id, l]) => [id, l.slot]));
+    for (const it of items) {
+      const l = out.get(it.id)!, el = reg.current.get(it.id)!.el;
+      // .lbl is translate(-50%, -100%): bottom-centre on the anchor; shift that to the placed box
+      el.style.transform = `translate(calc(-50% + ${(l.cx - it.x).toFixed(1)}px), calc(-100% + ${(l.box.y1 - it.y).toFixed(1)}px))`;
+      const above = l.cy < it.y;
+      el.dataset.lead = l.leader ? (above ? "down" : "up") : "";
+      if (l.leader) el.style.setProperty("--lead", `${(above ? it.y - l.box.y1 : l.box.y0 - it.y).toFixed(1)}px`);
+    }
+  });
+  return null;
 }
 
 export function Robots({ lite = false }: { lite?: boolean }) {
@@ -186,11 +242,15 @@ export function Robots({ lite = false }: { lite?: boolean }) {
   const af = useStore((s) => s.activeFloor);
   const activeFloor = lite || af === "exploded" ? "all" : af;
   const visible = (r: RobotState) => activeFloor === "all" || r.floor === activeFloor || !!r.lift_id;
+  const labels = showLabels && !lite;
+  const reg = useRef(new Map<string, LabelEntry>());
+  const onLabel = useCallback<LabelRegister>((id, el, obj) => { if (el && obj) reg.current.set(id, { el, obj, w: 0, h: 0 }); else reg.current.delete(id); }, []);
   return (
     <group>
+      {labels && <LabelDeclutter reg={reg} selected={selected} />}
       {Object.values(robots).filter(visible).map((r) => (
         <group key={r.id}>
-          <RobotMesh r={r} selected={r.id === selected} onSelect={() => select(r.id)} showLabel={showLabels && !lite} lite={lite} />
+          <RobotMesh r={r} selected={r.id === selected} onSelect={() => select(r.id)} showLabel={labels} lite={lite} onLabel={onLabel} />
           {showPaths && !lite && <RobotPath r={r} selected={r.id === selected} />}
         </group>
       ))}

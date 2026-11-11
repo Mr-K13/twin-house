@@ -4,6 +4,7 @@ import { Html } from "@react-three/drei";
 import * as THREE from "three";
 import { layout, useStore } from "../../state/store";
 import type { LayoutConveyor, LayoutStation, LayoutCharging, LayoutSensor } from "../../layout/types";
+import { PALETTE, KRAFT } from "./palette";
 
 /** Conveyor: extruded along path. When RUNNING, parcels move along the belt (speed = simulated speed_mps × playback speed). When ERROR, the belt blinks red and parcels stop. */
 export function Conveyor({ c }: { c: LayoutConveyor }) {
@@ -51,20 +52,20 @@ export function Conveyor({ c }: { c: LayoutConveyor }) {
         {/* Belt surface */}
         <mesh position={[0, 0.8, 0]} castShadow receiveShadow>
           <boxGeometry args={[len, 0.12, c.width]} />
-          <meshStandardMaterial ref={i === 0 ? matRef : undefined} color={status === "ERROR" ? "#7f1d1d" : "#1f2937"} roughness={0.7} metalness={0.3} emissive={status === "ERROR" ? "#ef4444" : "#000"} emissiveIntensity={0.6} />
+          <meshStandardMaterial ref={i === 0 ? matRef : undefined} color={status === "ERROR" ? "#7f1d1d" : PALETTE.ink} roughness={0.7} metalness={0.2} emissive={status === "ERROR" ? "#ef4444" : "#000"} emissiveIntensity={0.6} />
         </mesh>
         {/* Side frames */}
         {[-1, 1].map((s) => (
           <mesh key={s} position={[0, 0.75, (s * (c.width + 0.12)) / 2]}>
             <boxGeometry args={[len, 0.3, 0.1]} />
-            <meshStandardMaterial color="#4b5563" metalness={0.7} roughness={0.4} />
+            <meshStandardMaterial color={PALETTE.blue} metalness={0.25} roughness={0.5} />
           </mesh>
         ))}
         {/* Support legs */}
         {Array.from({ length: Math.max(2, Math.floor(len / 3)) }, (_, k) => (
           <mesh key={k} position={[-len / 2 + 1 + k * ((len - 2) / Math.max(1, Math.floor(len / 3) - 1)), 0.37, 0]}>
             <boxGeometry args={[0.12, 0.74, c.width]} />
-            <meshStandardMaterial color="#374151" metalness={0.6} roughness={0.5} />
+            <meshStandardMaterial color={PALETTE.steel} metalness={0.4} roughness={0.5} />
           </mesh>
         ))}
         {/* Status light bar */}
@@ -81,7 +82,7 @@ export function Conveyor({ c }: { c: LayoutConveyor }) {
       {Array.from({ length: N_PARCELS }, (_, k) => (
         <mesh key={k} castShadow>
           <boxGeometry args={[0.7, 0.5, 0.6]} />
-          <meshStandardMaterial color={k % 3 === 0 ? "#b98a5e" : "#c49a6c"} roughness={0.9} />
+          <meshStandardMaterial color={KRAFT[k % KRAFT.length]} roughness={0.9} />
         </mesh>
       ))}
     </group>
@@ -91,13 +92,13 @@ export function Conveyor({ c }: { c: LayoutConveyor }) {
   const endEquip = (
     <group>
       <group position={[p0[0], 0, p0[1]]}>
-        <mesh position={[0, 0.75, 0]} castShadow><boxGeometry args={[1.6, 1.5, 1.6]} /><meshStandardMaterial color="#39424f" metalness={0.5} roughness={0.5} /></mesh>
-        <mesh position={[0, 1.62, 0]}><boxGeometry args={[1.9, 0.28, 1.9]} /><meshStandardMaterial color="#2a323d" metalness={0.6} roughness={0.4} /></mesh>
+        <mesh position={[0, 0.75, 0]} castShadow><boxGeometry args={[1.6, 1.5, 1.6]} /><meshStandardMaterial color={PALETTE.blue} metalness={0.2} roughness={0.5} /></mesh>
+        <mesh position={[0, 1.62, 0]}><boxGeometry args={[1.9, 0.28, 1.9]} /><meshStandardMaterial color={PALETTE.blueDeep} metalness={0.3} roughness={0.4} /></mesh>
       </group>
       <group position={[pN[0], 0, pN[1]]}>
-        <mesh position={[0, 0.45, 0]} castShadow><boxGeometry args={[1.7, 0.9, 1.7]} /><meshStandardMaterial color="#39424f" metalness={0.5} roughness={0.5} /></mesh>
-        <mesh position={[0, 0.95, 0]} rotation-x={0.35}><boxGeometry args={[1.5, 0.08, 1.3]} /><meshStandardMaterial color="#4a5568" metalness={0.6} roughness={0.35} /></mesh>
-        <mesh position={[0, 1.1, 0]}><boxGeometry args={[0.25, 0.5, 0.25]} /><meshStandardMaterial color="#22303f" /></mesh>
+        <mesh position={[0, 0.45, 0]} castShadow><boxGeometry args={[1.7, 0.9, 1.7]} /><meshStandardMaterial color={PALETTE.white} metalness={0.2} roughness={0.5} /></mesh>
+        <mesh position={[0, 0.95, 0]} rotation-x={0.35}><boxGeometry args={[1.5, 0.08, 1.3]} /><meshStandardMaterial color={PALETTE.silver} metalness={0.4} roughness={0.35} /></mesh>
+        <mesh position={[0, 1.1, 0]}><boxGeometry args={[0.25, 0.5, 0.25]} /><meshStandardMaterial color={PALETTE.ink} /></mesh>
         <mesh position={[0, 1.4, 0]}><sphereGeometry args={[0.08, 8, 8]} /><meshBasicMaterial color="#22c55e" /></mesh>
       </group>
     </group>
@@ -112,25 +113,25 @@ export function StationModel({ s, lite }: { s: LayoutStation; lite?: boolean }) 
     <group position={[(x0 + x1) / 2, 0, (z0 + z1) / 2]}>
       <mesh position={[0, 0.005, 0]} rotation-x={-Math.PI / 2}>
         <planeGeometry args={[w, d]} />
-        <meshBasicMaterial color={s.kind === "PACKING" ? "#1e3a5f" : "#3b2a5f"} transparent opacity={0.35} />
+        <meshBasicMaterial color={s.kind === "PACKING" ? PALETTE.blue : PALETTE.teal} transparent opacity={0.22} />
       </mesh>
       {/* Workbenches */}
       {Array.from({ length: Math.floor(w / 4) }, (_, i) => (
         <group key={i} position={[-w / 2 + 2 + i * 4, 0, 0]}>
-          <mesh position={[0, 0.45, 0]} castShadow><boxGeometry args={[2.4, 0.9, 1.2]} /><meshStandardMaterial color="#334155" metalness={0.4} roughness={0.6} /></mesh>
-          <mesh position={[0, 1.15, 0]}><boxGeometry args={[0.8, 0.5, 0.7]} /><meshStandardMaterial color="#c49a6c" /></mesh>
+          <mesh position={[0, 0.45, 0]} castShadow><boxGeometry args={[2.4, 0.9, 1.2]} /><meshStandardMaterial color={PALETTE.white} metalness={0.15} roughness={0.6} /></mesh>
+          <mesh position={[0, 1.15, 0]}><boxGeometry args={[0.8, 0.5, 0.7]} /><meshStandardMaterial color={KRAFT[0]} /></mesh>
           {/* Robotic arm (Packing) */}
           {s.kind === "PACKING" && i % 2 === 0 && (
             <group position={[1.6, 0, 0]}>
-              <mesh position={[0, 0.3, 0]}><cylinderGeometry args={[0.35, 0.45, 0.6, 16]} /><meshStandardMaterial color="#1f2937" metalness={0.7} roughness={0.3} /></mesh>
-              <mesh position={[0, 1.2, 0]} rotation-z={0.35}><boxGeometry args={[0.3, 1.8, 0.3]} /><meshStandardMaterial color="#e5e7eb" metalness={0.5} roughness={0.3} /></mesh>
-              <mesh position={[-0.5, 2.1, 0]} rotation-z={-0.9}><boxGeometry args={[0.25, 1.5, 0.25]} /><meshStandardMaterial color="#e5e7eb" metalness={0.5} roughness={0.3} /></mesh>
+              <mesh position={[0, 0.3, 0]}><cylinderGeometry args={[0.35, 0.45, 0.6, 16]} /><meshStandardMaterial color={PALETTE.ink} metalness={0.5} roughness={0.3} /></mesh>
+              <mesh position={[0, 1.2, 0]} rotation-z={0.35}><boxGeometry args={[0.3, 1.8, 0.3]} /><meshStandardMaterial color={PALETTE.yellow} metalness={0.15} roughness={0.45} /></mesh>
+              <mesh position={[-0.5, 2.1, 0]} rotation-z={-0.9}><boxGeometry args={[0.25, 1.5, 0.25]} /><meshStandardMaterial color={PALETTE.yellow} metalness={0.15} roughness={0.45} /></mesh>
             </group>
           )}
         </group>
       ))}
       {!lite && <Html position={[0, 0.1, d / 2 + 1]} center zIndexRange={[2, 0]} style={{ pointerEvents: "none" }}>
-        <div className="sign-lbl" style={{ color: s.kind === "PACKING" ? "#93c5fd" : "#d8b4fe", borderColor: s.kind === "PACKING" ? "#1d4ed8" : "#7e22ce" }}>{s.kind}</div>
+        <div className="sign-lbl" style={{ color: s.kind === "PACKING" ? PALETTE.blueSoft : "#7fe0d8", borderColor: s.kind === "PACKING" ? PALETTE.blue : PALETTE.teal }}>{s.kind}</div>
       </Html>}
     </group>
   );
@@ -140,20 +141,20 @@ export function StationModel({ s, lite }: { s: LayoutStation; lite?: boolean }) 
 export function ChargerModel({ c, occupied = false, lite }: { c: LayoutCharging; occupied?: boolean; lite?: boolean }) {
   return (
     <group position={[c.position[0], 0, c.position[2]]}>
-      <mesh position={[0, 0.6, 0]} castShadow><boxGeometry args={[0.8, 1.2, 0.4]} /><meshStandardMaterial color="#1f2937" metalness={0.6} roughness={0.4} /></mesh>
+      <mesh position={[0, 0.6, 0]} castShadow><boxGeometry args={[0.8, 1.2, 0.4]} /><meshStandardMaterial color={PALETTE.white} metalness={0.15} roughness={0.45} /></mesh>
       <mesh position={[0, 0.9, 0.21]}><planeGeometry args={[0.5, 0.25]} /><meshBasicMaterial color={occupied ? "#3b82f6" : "#22c55e"} /></mesh>
-      <mesh position={[0, 0.01, -1.9]} rotation-x={-Math.PI / 2}><planeGeometry args={[1.6, 1.6]} /><meshBasicMaterial color="#1d4ed8" transparent opacity={0.25} /></mesh>
+      <mesh position={[0, 0.01, -1.9]} rotation-x={-Math.PI / 2}><planeGeometry args={[1.6, 1.6]} /><meshBasicMaterial color={PALETTE.blue} transparent opacity={0.3} /></mesh>
       {occupied && <pointLight position={[0, 1, -1.9]} color="#3b82f6" intensity={lite ? 0 : 3} distance={4} />}
     </group>
   );
 }
 
-/** Fixed sensor: a small cyan marker at the mount position */
+/** Fixed sensor: a small teal marker at the mount position */
 export function SensorModel({ s }: { s: LayoutSensor }) {
   return (
     <mesh position={s.position}>
       <sphereGeometry args={[0.18, 12, 12]} />
-      <meshBasicMaterial color="#22d3ee" />
+      <meshBasicMaterial color={PALETTE.teal} />
     </mesh>
   );
 }
@@ -174,7 +175,7 @@ export function Fixtures({ lite = false }: { lite?: boolean }) {
         return (
           <mesh key={p.id} position={[(x0 + x1) / 2, 0.005, (z0 + z1) / 2]} rotation-x={-Math.PI / 2}>
             <planeGeometry args={[x1 - x0, z1 - z0]} />
-            <meshBasicMaterial color="#334155" transparent opacity={0.25} />
+            <meshBasicMaterial color={PALETTE.steel} transparent opacity={0.3} />
           </mesh>
         );
       })}
@@ -183,7 +184,7 @@ export function Fixtures({ lite = false }: { lite?: boolean }) {
         const [x0, z0, x1, z1] = r.rect;
         return (
           <group key={r.id} position={[(x0 + x1) / 2, 0, (z0 + z1) / 2]}>
-            <mesh position={[0, 0.006, 0]} rotation-x={-Math.PI / 2}><planeGeometry args={[x1 - x0, z1 - z0]} /><meshBasicMaterial color="#7f1d1d" transparent opacity={0.18} /></mesh>
+            <mesh position={[0, 0.006, 0]} rotation-x={-Math.PI / 2}><planeGeometry args={[x1 - x0, z1 - z0]} /><meshBasicMaterial color="#ef4444" transparent opacity={0.12} /></mesh>
             <lineSegments position={[0, 0.02, 0]}>
               <edgesGeometry args={[new THREE.PlaneGeometry(x1 - x0, z1 - z0).rotateX(-Math.PI / 2)]} />
               <lineBasicMaterial color="#ef4444" />
@@ -198,7 +199,7 @@ export function Fixtures({ lite = false }: { lite?: boolean }) {
         return (
           <mesh key={w.id} position={[(x0 + x1) / 2, 0.004, (z0 + z1) / 2]} rotation-x={-Math.PI / 2}>
             <planeGeometry args={[x1 - x0, z1 - z0]} />
-            <meshBasicMaterial color="#facc15" transparent opacity={0.06} />
+            <meshBasicMaterial color={PALETTE.yellow} transparent opacity={0.2} />
           </mesh>
         );
       })}

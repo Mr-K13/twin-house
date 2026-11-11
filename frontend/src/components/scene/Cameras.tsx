@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { useMemo } from "react";
 import { layout, useStore } from "../../state/store";
 import type { LayoutCamera } from "../../layout/types";
+import { PALETTE } from "./palette";
 
 /** One CCTV camera: pole mount, body aimed at look_at, record LED, and a translucent FOV cone scaled by fov_deg / range_m */
 export function CameraModel({ c, status = "ONLINE", active = false, onClick }: { c: LayoutCamera; status?: string; active?: boolean; onClick?: () => void }) {
@@ -13,10 +14,10 @@ export function CameraModel({ c, status = "ONLINE", active = false, onClick }: {
   return (
     <group position={c.position} onClick={onClick && ((e) => { e.stopPropagation(); onClick(); })}>
       {/* Mount and body */}
-      <mesh position={[0, 0.4, 0]}><cylinderGeometry args={[0.05, 0.05, 0.8, 8]} /><meshStandardMaterial color="#374151" /></mesh>
+      <mesh position={[0, 0.4, 0]}><cylinderGeometry args={[0.05, 0.05, 0.8, 8]} /><meshStandardMaterial color={PALETTE.slate} /></mesh>
       <mesh quaternion={q} position={[0, 0, 0]}>
         <boxGeometry args={[0.35, 0.6, 0.3]} />
-        <meshStandardMaterial color="#111827" metalness={0.6} roughness={0.4} />
+        <meshStandardMaterial color={PALETTE.white} metalness={0.2} roughness={0.4} />
       </mesh>
       <mesh position={[0, 0.1, 0]}><sphereGeometry args={[0.07, 8, 8]} /><meshBasicMaterial color={status === "OFFLINE" ? "#6b7280" : "#ef4444"} /></mesh>
       {/* FOV cone */}

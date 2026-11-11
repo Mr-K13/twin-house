@@ -27,7 +27,7 @@ export function ZoneOverlay({ labels = true }: { labels?: boolean }) {
             {st !== "NORMAL" && (
               <mesh position={[cx, ey + 0.02, cz]} rotation-x={-Math.PI / 2}>
                 <planeGeometry args={[w, d]} />
-                <meshBasicMaterial color={color} transparent opacity={0.08} />
+                <meshBasicMaterial color={color} transparent opacity={0.16} />
               </mesh>
             )}
             {labels && (
